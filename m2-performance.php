@@ -514,6 +514,13 @@ if (!defined('PHP_VERSION_ID')) {
         transition: max-height 0.2s ease-out;
         background-color: #f1f1f1;
     }
+
+    #opCacheChart, #phpChart, #mySqlChart, #phpFPMChart, #sysctlChart, #redisChart {
+        width: 1024px;
+        text-align: left;
+        margin-left: auto;
+        margin-right: auto;
+    }
 </style>
 <!--[if lt IE 9]>
 <script type="text/javascript" defer="defer">
@@ -523,6 +530,7 @@ if (!defined('PHP_VERSION_ID')) {
 </head>
 
 <body>
+<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
 <?php
 //Happy Debug Area :)
 //echo '<pre>';
@@ -558,27 +566,171 @@ if (!defined('PHP_VERSION_ID')) {
     <h2>Server Uptime: [ <?php echo getServerUptime(); ?> ] || Server Load (5min): [<span class="<?php echo $level ?>"><?php echo $serverLoad[1]; ?></span>] <?php echo 'PHP Version: ' . PHP_VERSION_ID; ?></h2>
     <button type="button" class="collapsible"><a name="opcache">OPCache Review</a> [<a href="#top">#top</a>]</button>
     <div class="content">
-        <p><?php printTable(getOpCacheConfig(), $opCacheRecommendation, $configurationRemarks, $defaultHeaders); ?></p>
+        <p><?php $opCacheMatch = printTable(getOpCacheConfig(), $opCacheRecommendation, $configurationRemarks, $defaultHeaders); ?></p>
+        <div id="opCacheChart"></div>
+        <script type="text/javascript">
+            // Load google charts
+            google.charts.load('current', {'packages':['corechart']});
+            google.charts.setOnLoadCallback(opCacheChart);
+
+            // Draw the chart and set the chart values
+            function opCacheChart() {
+                var data = google.visualization.arrayToDataTable([
+                    ['ID', 'Value'],
+                    ['Matched', <?php echo $opCacheMatch['match']; ?>],
+                    ['Unmatched', <?php echo $opCacheMatch['total'] - $opCacheMatch['match']; ?>],
+                    ['Disable', <?php echo $opCacheMatch['disable']; ?>],
+                    ['TBD', <?php echo $opCacheMatch['tbd']; ?>]
+                ]);
+
+                // Optional; add a title and set the width and height of the chart
+                var options = {'title':'OPCache Review', 'width':1024, 'height':550};
+
+                // Display the chart inside the <div> element with id="piechart"
+                var opCacheChart = new google.visualization.PieChart(document.getElementById('opCacheChart'));
+                opCacheChart.draw(data, options);
+            }
+        </script>
     </div>
     <button type="button" class="collapsible"><a name="phpini">PHP Configuration Review</a> [<a href="#top">#top</a>]</button>
     <div class="content">
-        <p><?php printTable($localPhpConfiguration, $phpRecommendation, $configurationRemarks, $defaultHeaders); ?></p>
+        <p><?php $phpMatch = printTable($localPhpConfiguration, $phpRecommendation, $configurationRemarks, $defaultHeaders); ?></p>
+        <div id="phpChart"></div>
+        <script type="text/javascript">
+            // Load google charts
+            google.charts.load('current', {'packages':['corechart']});
+            google.charts.setOnLoadCallback(phpChart);
+
+            // Draw the chart and set the chart values
+            function phpChart() {
+                var data = google.visualization.arrayToDataTable([
+                    ['ID', 'Value'],
+                    ['Matched', <?php echo $phpMatch['match']; ?>],
+                    ['Unmatched', <?php echo $phpMatch['total'] - $phpMatch['match']; ?>],
+                    ['Disable', <?php echo $phpMatch['disable']; ?>],
+                    ['TBD', <?php echo $phpMatch['tbd']; ?>]
+                ]);
+
+                // Optional; add a title and set the width and height of the chart
+                var options = {'title':'PHP Review', 'width':1024, 'height':550};
+
+                // Display the chart inside the <div> element with id="piechart"
+                var phpChart = new google.visualization.PieChart(document.getElementById('phpChart'));
+                phpChart.draw(data, options);
+            }
+        </script>
     </div>
     <button type="button" class="collapsible"><a name="mysql">MySQL Configuration Review</a> [<a href="#top">#top</a>]</button>
     <div class="content">
-        <p><?php printTable(getMySQLConfig($mySqlConfigurationFlags), $mySQLRecommendation, $configurationRemarks, $defaultHeaders, "Output of <u>/usr/sbin/mysqld --help --verbose</u> has been used for this review.<br />Please Check Local MySQL Variables within MySQL Database Itself for Consistency: <u>mysql> show variables like '%innodb_file_per_table%';</u><br /><br />Recommend to scan the MySQL setting with <a href='https://raw.githubusercontent.com/major/MySQLTuner-perl/master/mysqltuner.pl' target='_blank'>MySQLTunner Script</a>"); ?></p>
+        <p><?php $mySQLMatch = printTable(getMySQLConfig($mySqlConfigurationFlags), $mySQLRecommendation, $configurationRemarks, $defaultHeaders, "Output of <u>/usr/sbin/mysqld --help --verbose</u> has been used for this review.<br />Please Check Local MySQL Variables within MySQL Database Itself for Consistency: <u>mysql> show variables like '%innodb_file_per_table%';</u><br /><br />Recommend to scan the MySQL setting with <a href='https://raw.githubusercontent.com/major/MySQLTuner-perl/master/mysqltuner.pl' target='_blank'>MySQLTunner Script</a>"); ?></p>
+        <div id="mySqlChart"></div>
+        <script type="text/javascript">
+            // Load google charts
+            google.charts.load('current', {'packages':['corechart']});
+            google.charts.setOnLoadCallback(mySqlChart);
+
+            // Draw the chart and set the chart values
+            function mySqlChart() {
+                var data = google.visualization.arrayToDataTable([
+                    ['ID', 'Value'],
+                    ['Matched', <?php echo $mySQLMatch['match']; ?>],
+                    ['Unmatched', <?php echo $mySQLMatch['total'] - $mySQLMatch['match']; ?>],
+                    ['Disable', <?php echo $mySQLMatch['disable']; ?>],
+                    ['TBD', <?php echo $mySQLMatch['tbd']; ?>]
+                ]);
+
+                // Optional; add a title and set the width and height of the chart
+                var options = {'title':'MySQL Review', 'width':1024, 'height':550};
+
+                // Display the chart inside the <div> element with id="piechart"
+                var mySqlChart = new google.visualization.PieChart(document.getElementById('mySqlChart'));
+                mySqlChart.draw(data, options);
+            }
+        </script>
     </div>
     <button type="button" class="collapsible"><a name="php-fpm">PHP-FPM Configuration Review</a> [<a href="#top">#top</a>]</button>
     <div class="content">
-        <p><?php printTable(getPhpFPMConfig(), $phpFPMRecommendation, $configurationRemarks, $defaultHeaders, "Local PHP-FPM Location that has been used to Perform Review. Using first result line from: find <u>/etc/php -iname php-fpm.conf</u>"); ?></p>
+        <p><?php $phpFPMMatch = printTable(getPhpFPMConfig(), $phpFPMRecommendation, $configurationRemarks, $defaultHeaders, "Local PHP-FPM Location that has been used to Perform Review. Using first result line from: find <u>/etc/php -iname php-fpm.conf</u>"); ?></p>
+        <div id="phpFPMChart"></div>
+        <script type="text/javascript">
+            // Load google charts
+            google.charts.load('current', {'packages':['corechart']});
+            google.charts.setOnLoadCallback(phpFPMChart);
+
+            // Draw the chart and set the chart values
+            function phpFPMChart() {
+                var data = google.visualization.arrayToDataTable([
+                    ['ID', 'Value'],
+                    ['Matched', <?php echo $phpFPMMatch['match']; ?>],
+                    ['Unmatched', <?php echo $phpFPMMatch['total'] - $phpFPMMatch['match']; ?>],
+                    ['Disable', <?php echo $phpFPMMatch['disable']; ?>],
+                    ['TBD', <?php echo $phpFPMMatch['tbd']; ?>]
+                ]);
+
+                // Optional; add a title and set the width and height of the chart
+                var options = {'title':'PHP-FPM Review', 'width':1024, 'height':550};
+
+                // Display the chart inside the <div> element with id="piechart"
+                var phpFPMChart = new google.visualization.PieChart(document.getElementById('phpFPMChart'));
+                phpFPMChart.draw(data, options);
+            }
+        </script>
     </div>
     <button type="button" class="collapsible"><a name="sysctl">Sysctl Configuration Review</a> [<a href="#top">#top</a>]</button>
     <div class="content">
-        <p><?php printTable(getSysctlConfig(), $sysctlRecommendation, $configurationRemarks, $defaultHeaders, "Local sysctl Location that has been used to Perform Review: <u>/etc/sysctl.conf</u>"); ?></p>
+        <p><?php $sysctlMatch = printTable(getSysctlConfig(), $sysctlRecommendation, $configurationRemarks, $defaultHeaders, "Local sysctl Location that has been used to Perform Review: <u>/etc/sysctl.conf</u>"); ?></p>
+        <div id="sysctlChart"></div>
+        <script type="text/javascript">
+            // Load google charts
+            google.charts.load('current', {'packages':['corechart']});
+            google.charts.setOnLoadCallback(sysctlChart);
+
+            // Draw the chart and set the chart values
+            function sysctlChart() {
+                var data = google.visualization.arrayToDataTable([
+                    ['ID', 'Value'],
+                    ['Matched', <?php echo $sysctlMatch['match']; ?>],
+                    ['Unmatched', <?php echo $sysctlMatch['total'] - $sysctlMatch['match']; ?>],
+                    ['Disable', <?php echo $sysctlMatch['disable']; ?>],
+                    ['TBD', <?php echo $sysctlMatch['tbd']; ?>]
+                ]);
+
+                // Optional; add a title and set the width and height of the chart
+                var options = {'title':'sysctl Review', 'width':1024, 'height':550};
+
+                // Display the chart inside the <div> element with id="piechart"
+                var sysctlChart = new google.visualization.PieChart(document.getElementById('sysctlChart'));
+                sysctlChart.draw(data, options);
+            }
+        </script>
     </div>
     <button type="button" class="collapsible"><a name="redis">Redis Configuration Review</a> [<a href="#top">#top</a>]</button>
     <div class="content">
-        <p><?php printTable(getRedisConfig(), $redisRecommendation, $configurationRemarks, $defaultHeaders, "Local Redis Location that has been used to Perform Review: <u>/etc/redis/redis.conf</u>"); ?></p>
+        <p><?php $redisMatch = printTable(getRedisConfig(), $redisRecommendation, $configurationRemarks, $defaultHeaders, "Local Redis Location that has been used to Perform Review: <u>/etc/redis/redis.conf</u>"); ?></p>
+        <div id="redisChart"></div>
+        <script type="text/javascript">
+            // Load google charts
+            google.charts.load('current', {'packages':['corechart']});
+            google.charts.setOnLoadCallback(redisChart);
+
+            // Draw the chart and set the chart values
+            function redisChart() {
+                var data = google.visualization.arrayToDataTable([
+                    ['ID', 'Value'],
+                    ['Matched', <?php echo $redisMatch['match']; ?>],
+                    ['Unmatched', <?php echo $redisMatch['total'] - $redisMatch['match']; ?>],
+                    ['Disable', <?php echo $redisMatch['disable']; ?>],
+                    ['TBD', <?php echo $redisMatch['tbd']; ?>]
+                ]);
+
+                // Optional; add a title and set the width and height of the chart
+                var options = {'title':'Redis Review', 'width':1024, 'height':550};
+
+                // Display the chart inside the <div> element with id="piechart"
+                var redisChart = new google.visualization.PieChart(document.getElementById('redisChart'));
+                redisChart.draw(data, options);
+            }
+        </script>
     </div>
 </div>
 
@@ -619,18 +771,34 @@ function printTable($array, $recommendedValues = false, $configurationRemarks = 
         }
         echo '</tr>';
     }
+    $matches = array(
+        'match'     => 0,
+        'disable'   => 0,
+        'tbd'       => 0,
+        'total'     => count($array)
+    );
+
     foreach ($array as $key => $value) {
         $configMatch    = 'v';
         $remark         = false;
         $remarkCSS      = 'remark';
         if (!is_array($value)) {
             $configMatch    = (array_key_exists($key, $recommendedValues) && !strcmp ($value, $recommendedValues[$key])) ? "configMatch" : "v";
-            $remark         = (array_key_exists($key, $configurationRemarks)) ? $configurationRemarks[$key] : "TBD";
+            if (array_key_exists($key, $recommendedValues) && !strcmp ($value, $recommendedValues[$key])) {
+                $configMatch = "configMatch";
+                $matches['match']++;
+            } else {
+                $configMatch = "v";
+            }
+
+            $remark = (array_key_exists($key, $configurationRemarks)) ? $configurationRemarks[$key] : "TBD";
 
             if (!strcmp($remark, STATUS_DISABLE)) {
                 $remarkCSS = "remark disable";
+                $matches['disable']++;
             } elseif (!strcmp($remark, STATUS_TBD)) {
                 $remarkCSS = "remark tbd";
+                $matches['tbd']++;
             }
         }
         echo '<tr>';
@@ -662,7 +830,32 @@ function printTable($array, $recommendedValues = false, $configurationRemarks = 
         }
         echo '</tr>';
     }
+    echo '</table><br />';
+
+    echo '<table border="0" cellpadding="2" width="900">';
+        echo  '<tr class="h">';
+            echo '<th>What</th>';
+            echo '<th>Status</th>';
+        echo  '</tr>';
+    echo  '<tr>';
+        echo '<td class="e">Match</td>';
+        echo '<td class="v">[',$matches['match'],'/<b>',$matches['total'],'</b>]</td>';
+    echo  '</tr>';
+    echo  '<tr>';
+        echo '<td class="e">Unmatched</td>';
+        echo '<td class="v">[',$matches['total'] - $matches['match'],'/<b>',$matches['total'],'</b>]</td>';
+    echo  '</tr>';
+    echo  '<tr>';
+        echo '<td class="e">Disabled</td>';
+        echo '<td class="v">[',$matches['disable'],'/<b>',$matches['total'],'</b>]</td>';
+    echo  '</tr>';
+    echo  '<tr>';
+        echo '<td class="e">TBD</td>';
+        echo '<td class="v">[',$matches['tbd'],'/<b>',$matches['total'],'</b>]</td>';
+    echo  '</tr>';
     echo '</table>';
+
+    return $matches;
 }
 
 /*
