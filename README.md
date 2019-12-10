@@ -1,5 +1,5 @@
-# m2-performance-review
-Magento 2 - Performance Review Panel
+# :: M2 Performance Review Panel ::
+## Brief Info
 
 <ul>
 <li><b>Description</b>:    Magento 2 - Performance Review Panel</li>
@@ -8,3 +8,7 @@ Magento 2 - Performance Review Panel
 <li><b>Date</b>:           <em>29.11.2019</em></li>
 <li><b>Note</b>:           This is in AS-IS Form, Experimental Script, Changes should be applied under Skilled Supervision / Magento HERO :)</li>
 </ul>
+
+## Script Overview
+
+![Magento 2 - Performance Review Panel](M2PerformanceReview.png)
