@@ -2,8 +2,8 @@
 /*
 Description:    Magento 2 - Performance Review Panel
 Author:         Piotr Siejczuk - https://github.com/PiotrSiejczuk (some of the code and display logic is based on OCP Control Panel Script)
-Version:        0.0.1 Alpha
-Date:           29.11.2019
+Version:        0.0.2 Alpha
+Date:           10.12.2019
 Note:           This Script is in AS-IS Form, Experimental Script, Changes should be applied under Skilled Supervision / Magento HERO :)
 */
 
@@ -98,6 +98,14 @@ $phpFPMRecommendation       = array(
     "slowlog"                               => '/var/log/php-fpm/www-slow.log', //@ToDo: Double-check
     "request_slowlog_timeout"               => '10s'
 );
+$phpFPMConfigurationFlags   = array(
+    'pm.max_children',
+    'pm.start_servers',
+    'pm.max_requests',
+    'rlimit_core',
+    'slowlog',
+    'request_slowlog_timeout'
+);
 $sysctlRecommendation       = array(
     'sysctl_config'                         => 'N/A',
     'net.core.rmem_max'                     => 212992,
@@ -112,6 +120,19 @@ $sysctlRecommendation       = array(
     'net.ipv4.tcp_sack'                     => 1,
     'net.core.somaxconn'                    => 4096
 );
+$sysctlConfigurationFlags   = array(
+    'net.core.rmem_max',
+    'net.core.wmem_max',
+    'net.ipv4.tcp_rmem',
+    'net.ipv4.tcp_wmem',
+    'net.core.netdev_max_backlog',
+    'net.ipv4.tcp_no_metrics_save',
+    'net.ipv4.tcp_congestion_control',
+    'net.ipv4.tcp_window_scaling',
+    'net.ipv4.tcp_timestamps',
+    'net.ipv4.tcp_sack',
+    'net.core.somaxconn'
+);
 $redisRecommendation        = array(
     'redis_config'                                              => 'N/A',
     'session.redis.timeout'                                     => 10,
@@ -120,6 +141,14 @@ $redisRecommendation        = array(
     'session.redis.max_lifetime'                                => 2592000,
     'cache.frontend.default.backend_options.read_timeout'       => 2.5,
     'cache.frontend.default.backend_options.connect_retries'    => 3
+);
+$redisConfigurationFlags    = array(
+    'session.redis.timeout',
+    'session.redis.disable_locking',
+    'session.redis.min_lifetime',
+    'session.redis.max_lifetime',
+    'cache.frontend.default.backend_options.read_timeout',
+    'cache.frontend.default.backend_options.connect_retries'
 );
 $mySqlConfigurationFlags    = array(
     'innodb-thread-concurrency',
@@ -400,6 +429,7 @@ They do not share the <em>memory_limit</em> setting. PHP is not designed for mul
     "wait-timeout"                                              => "",
     "default-storage-engine"                                    => ""
 );
+$customConfigLocation       = false;
 
 /*
  * Default Configuration and Recommended Values - End
@@ -521,6 +551,103 @@ if (!defined('PHP_VERSION_ID')) {
         margin-left: auto;
         margin-right: auto;
     }
+
+    .form-style{
+        font: 95% Arial, Helvetica, sans-serif;
+        max-width: 600px;
+        margin: 10px auto;
+        padding: 16px;
+        background: #F7F7F7;
+    }
+    .form-style h1{
+        background: orange;
+        padding: 8px 0;
+        font-size: 140%;
+        /*font-weight: 300;*/
+        text-align: center;
+        color: #fff;
+        margin: -16px -16px 16px -16px;
+        font-weight: bold;
+    }
+    .form-style input[type="text"],
+    .form-style input[type="date"],
+    .form-style input[type="datetime"],
+    .form-style input[type="email"],
+    .form-style input[type="number"],
+    .form-style input[type="search"],
+    .form-style input[type="time"],
+    .form-style input[type="url"],
+    .form-style textarea,
+    .form-style select
+    {
+        -webkit-transition: all 0.30s ease-in-out;
+        -moz-transition: all 0.30s ease-in-out;
+        -ms-transition: all 0.30s ease-in-out;
+        -o-transition: all 0.30s ease-in-out;
+        outline: none;
+        box-sizing: border-box;
+        -webkit-box-sizing: border-box;
+        -moz-box-sizing: border-box;
+        width: 100%;
+        background: #fff;
+        margin-bottom: 4%;
+        border: 1px solid;
+        padding: 3%;
+        font: 95% Arial, Helvetica, sans-serif;
+    }
+    .form-style input[type="text"]:focus,
+    .form-style input[type="date"]:focus,
+    .form-style input[type="datetime"]:focus,
+    .form-style input[type="email"]:focus,
+    .form-style input[type="number"]:focus,
+    .form-style input[type="search"]:focus,
+    .form-style input[type="time"]:focus,
+    .form-style input[type="url"]:focus,
+    .form-style textarea:focus,
+    .form-style select:focus
+    {
+        box-shadow: 0 0 5px orange;
+        padding: 3%;
+        border: 1px solid orange;
+    }
+
+    .form-style input[type="submit"],
+    .form-style input[type="button"] {
+        box-sizing: border-box;
+        -webkit-box-sizing: border-box;
+        -moz-box-sizing: border-box;
+        width: 100%;
+        padding: 3%;
+        background: orange;
+        border-left: 8px solid orangered;
+        border-top-style: none;
+        border-right-style: none;
+        border-bottom-style: none;
+        /*border-left-style: none;*/
+        color: #fff;
+        font-weight: bold;
+    }
+    .form-style input[type="submit"]:hover,
+    .form-style input[type="button"]:hover {
+        background: darkorange;
+        border-left: 8px solid orangered;
+    }
+
+    .form-style label{
+        display: block;
+        margin: 0px 0px 15px 0px;
+    }
+    .form-style label > span{
+        width: 100px;
+        font-weight: bold;
+        float: left;
+        padding-top: 8px;
+        padding-right: 5px;
+    }
+
+    .form-style input.input-field, .form-style .select-field{
+        width: 48%;
+    }
 </style>
 <!--[if lt IE 9]>
 <script type="text/javascript" defer="defer">
@@ -531,13 +658,6 @@ if (!defined('PHP_VERSION_ID')) {
 
 <body>
 <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
-<?php
-//Happy Debug Area :)
-//echo '<pre>';
-//var_dump(getMySQLConfig($mySqlConfigurationFlags));
-//echo '</pre>';
-//die;
-?>
 <div class="center">
     <h1><a name="top" href="?">:: Magento 2 Performance Review Script ::</a></h1>
 
@@ -562,11 +682,27 @@ if (!defined('PHP_VERSION_ID')) {
         } else {
             $level = 'problem';
         }
+
+        if (isset($_POST) && !empty($_POST)) {
+            $customConfigLocation = getCustomConfigLocation();
+        } else {
+            ?>
+            <div class="form-style">
+                <form action="#" method="post">
+                    <h1>:: Custom Config Locations ::</h1>
+                    <label for="phpfpm"><span><em>PHP-FPM</em>:</span> <input type="text" class="input-field" name="phpfpm" value="/etc/php/7.3/fpm/php-fpm.conf" /></label>
+                    <label for="sysctl"><span><em>Sysctl</em>:</span> <input type="text" class="input-field" name="sysctl" value="/etc/sysctl.conf" /></label>
+                    <label for="redis"><span><em>Redis</em>:</span> <input type="text" class="input-field" name="redis" value="/etc/redis/redis.conf" /></label>
+                    <input type="submit" name="submit" value="Submit" />
+                </form>
+            </div>
+            <?php
+        }
     ?>
     <h2>Server Uptime: [ <?php echo getServerUptime(); ?> ] || Server Load (5min): [<span class="<?php echo $level ?>"><?php echo $serverLoad[1]; ?></span>] <?php echo 'PHP Version: ' . PHP_VERSION_ID; ?></h2>
     <button type="button" class="collapsible"><a name="opcache">OPCache Review</a> [<a href="#top">#top</a>]</button>
     <div class="content">
-        <p><?php $opCacheMatch = printTable(getOpCacheConfig(), $opCacheRecommendation, $configurationRemarks, $defaultHeaders); ?></p>
+        <p><?php $opCacheMatch = printTable(getOpCacheConfig($customConfigLocation), $opCacheRecommendation, $configurationRemarks, $defaultHeaders); ?></p>
         <div id="opCacheChart"></div>
         <script type="text/javascript">
             // Load google charts
@@ -622,7 +758,7 @@ if (!defined('PHP_VERSION_ID')) {
     </div>
     <button type="button" class="collapsible"><a name="mysql">MySQL Configuration Review</a> [<a href="#top">#top</a>]</button>
     <div class="content">
-        <p><?php $mySQLMatch = printTable(getMySQLConfig($mySqlConfigurationFlags), $mySQLRecommendation, $configurationRemarks, $defaultHeaders, "Output of <u>/usr/sbin/mysqld --help --verbose</u> has been used for this review.<br />Please Check Local MySQL Variables within MySQL Database Itself for Consistency: <u>mysql> show variables like '%innodb_file_per_table%';</u><br /><br />Recommend to scan the MySQL setting with <a href='https://raw.githubusercontent.com/major/MySQLTuner-perl/master/mysqltuner.pl' target='_blank'>MySQLTunner Script</a>"); ?></p>
+        <p><?php $mySQLMatch = printTable(getMySQLConfig($mySqlConfigurationFlags, $customConfigLocation), $mySQLRecommendation, $configurationRemarks, $defaultHeaders, "Output of <u>/usr/sbin/mysqld --help --verbose</u> has been used for this review.<br />Please Check Local MySQL Variables within MySQL Database Itself for Consistency: <u>mysql> show variables like '%innodb_file_per_table%';</u><br /><br />Recommend to scan the MySQL setting with <a href='https://raw.githubusercontent.com/major/MySQLTuner-perl/master/mysqltuner.pl' target='_blank'>MySQLTunner Script</a>"); ?></p>
         <div id="mySqlChart"></div>
         <script type="text/javascript">
             // Load google charts
@@ -650,7 +786,7 @@ if (!defined('PHP_VERSION_ID')) {
     </div>
     <button type="button" class="collapsible"><a name="php-fpm">PHP-FPM Configuration Review</a> [<a href="#top">#top</a>]</button>
     <div class="content">
-        <p><?php $phpFPMMatch = printTable(getPhpFPMConfig(), $phpFPMRecommendation, $configurationRemarks, $defaultHeaders, "Local PHP-FPM Location that has been used to Perform Review. Using first result line from: find <u>/etc/php -iname php-fpm.conf</u>"); ?></p>
+        <p><?php $phpFPMMatch = printTable(getPhpFPMConfig($phpFPMConfigurationFlags, $customConfigLocation), $phpFPMRecommendation, $configurationRemarks, $defaultHeaders, "Local PHP-FPM Location that has been used to Perform Review. Using first result line from: find <u>/etc/php -iname php-fpm.conf</u>"); ?></p>
         <div id="phpFPMChart"></div>
         <script type="text/javascript">
             // Load google charts
@@ -678,7 +814,7 @@ if (!defined('PHP_VERSION_ID')) {
     </div>
     <button type="button" class="collapsible"><a name="sysctl">Sysctl Configuration Review</a> [<a href="#top">#top</a>]</button>
     <div class="content">
-        <p><?php $sysctlMatch = printTable(getSysctlConfig(), $sysctlRecommendation, $configurationRemarks, $defaultHeaders, "Local sysctl Location that has been used to Perform Review: <u>/etc/sysctl.conf</u>"); ?></p>
+        <p><?php $sysctlMatch = printTable(getSysctlConfig($sysctlConfigurationFlags, $customConfigLocation), $sysctlRecommendation, $configurationRemarks, $defaultHeaders, "Local sysctl Location that has been used to Perform Review: <u>/etc/sysctl.conf</u>"); ?></p>
         <div id="sysctlChart"></div>
         <script type="text/javascript">
             // Load google charts
@@ -706,7 +842,7 @@ if (!defined('PHP_VERSION_ID')) {
     </div>
     <button type="button" class="collapsible"><a name="redis">Redis Configuration Review</a> [<a href="#top">#top</a>]</button>
     <div class="content">
-        <p><?php $redisMatch = printTable(getRedisConfig(), $redisRecommendation, $configurationRemarks, $defaultHeaders, "Local Redis Location that has been used to Perform Review: <u>/etc/redis/redis.conf</u>"); ?></p>
+        <p><?php $redisMatch = printTable(getRedisConfig($redisConfigurationFlags, $customConfigLocation), $redisRecommendation, $configurationRemarks, $defaultHeaders, "Local Redis Location that has been used to Perform Review: <u>/etc/redis/redis.conf</u>"); ?></p>
         <div id="redisChart"></div>
         <script type="text/javascript">
             // Load google charts
@@ -858,6 +994,22 @@ function printTable($array, $recommendedValues = false, $configurationRemarks = 
     return $matches;
 }
 
+function getCustomConfigLocation() {
+    $customConfig = array(
+        'phpfpm'    => false,
+        'sysctl'    => false,
+        'redis'     => false,
+    );
+
+    if (isset($_POST)) {
+        $customConfig['phpfpm']     = (isset($_POST['phpfpm'])) ? filter_var($_POST['phpfpm'], FILTER_SANITIZE_STRIPPED) : false;
+        $customConfig['sysctl']     = (isset($_POST['sysctl'])) ? filter_var($_POST['sysctl'], FILTER_SANITIZE_STRIPPED) : false;
+        $customConfig['redis']      = (isset($_POST['redis'])) ? filter_var($_POST['redis'], FILTER_SANITIZE_STRIPPED) : false;
+    }
+
+    return $customConfig;
+}
+
 /*
  * Nasty way to get Server Uptime
  */
@@ -894,7 +1046,7 @@ function getOpCacheConfig() {
     return $opCacheDetails;
 }
 
-function getMySQLConfig($mySqlConfigurationFlags) {
+function getMySQLConfig($mySqlConfigurationFlags, $customConfigLocation = false) {
     $mySqlConfig            = array();
     $statusCommand          = "service mysql status | grep 'active (running)'";
     $mySqlStatus            = shell_exec($statusCommand);
@@ -902,9 +1054,9 @@ function getMySQLConfig($mySqlConfigurationFlags) {
         $fetchConfigCommand = "/usr/sbin/mysqld --help --verbose | grep -n 'Variables (--variable-name=value)'"; //Locate Line Number for "Variables (--variable-name=value) Section"
         $lineNumberResult   = shell_exec($fetchConfigCommand);
         if ($lineNumberResult) {
-            $lineNumber         = explode(":", $lineNumberResult);
+            $lineNumber     = explode(":", $lineNumberResult);
             foreach ($mySqlConfigurationFlags as $configFlag) {
-                $mySqlConfig[$configFlag] = getMySQLConfigExactValue(shell_exec("/usr/sbin/mysqld --help --verbose | sed -n '$lineNumber[0],\$p' | grep -w '^$configFlag'"));
+                $mySqlConfig[$configFlag] = getMySQLConfigExactValue(shell_exec("/usr/sbin/mysqld --help --verbose | sed -n '$lineNumber[0],\$p' | grep -iw '^$configFlag'"));
             }
         }
     }
@@ -923,56 +1075,59 @@ function getMySQLConfigExactValue($inputString = false) {
     return $configValue;
 }
 
-function getPhpFPMConfig() {
+function getPhpFPMConfig($phpFPMConfigurationFlags, $customConfigLocation = false) {
     $phpFPMConfig           = array();
-    $phpFPMLocations        = explode(PHP_EOL, shell_exec('find /etc/php -iname php-fpm.conf'));
-    if ($phpFPMLocations) {
-        $phpFPMReadLocation = reset($phpFPMLocations);
-        $phpFPMConfig['php-fpm_config']             = $phpFPMReadLocation;
-        $phpFPMConfig['pm.max_children']            = shell_exec('grep -i "pm.max_children" ' . $phpFPMReadLocation);
-        $phpFPMConfig['pm.start_servers']           = shell_exec('grep -i "pm.start_servers" ' . $phpFPMReadLocation);
-        $phpFPMConfig['pm.max_requests']            = shell_exec('grep -i "pm.max_requests" ' . $phpFPMReadLocation);
-        $phpFPMConfig['rlimit_core']                = shell_exec('grep -i "rlimit_core" ' . $phpFPMReadLocation);
-        $phpFPMConfig['slowlog']                    = shell_exec('grep -i "slowlog" ' . $phpFPMReadLocation);
-        $phpFPMConfig['request_slowlog_timeout']    = shell_exec('grep -i "request_slowlog_timeout" ' . $phpFPMReadLocation);
+    $defaultFPMLocation     = ($customConfigLocation['phpfpm']) ? $customConfigLocation['phpfpm'] : '/etc/php';
+    if (file_exists($defaultFPMLocation)) {
+        $phpFPMLocations = ($customConfigLocation['phpfpm']) ? $customConfigLocation['phpfpm'] : explode(PHP_EOL, shell_exec("find $defaultFPMLocation -iname php-fpm.conf"));
+        if ($phpFPMLocations) {
+            $phpFPMReadLocation = ($customConfigLocation['phpfpm']) ? $customConfigLocation['phpfpm'] : reset($phpFPMLocations);
+            $phpFPMConfig['php-fpm_config'] = $phpFPMReadLocation;
+            foreach ($phpFPMConfigurationFlags as $configFlag) {
+                $configValueString              = shell_exec('grep -iw "'.$configFlag.'" ' . $phpFPMReadLocation);
+                $phpFPMConfig[$configFlag]      = false;
+                if ($configValueString) {
+                    $configValue                = explode(" = ", $configValueString);
+                    $phpFPMConfig[$configFlag]  = $configValue[1]; //Pattern: ConfigName = ConfigValue
+                }
+            }
+        }
     }
 
     return $phpFPMConfig;
 }
 
-function getSysctlConfig() {
+function getSysctlConfig($sysctlConfigurationFlags, $customConfigLocation = false) {
     $sysctlConfig           = array();
-    $sysctlConfigLocation   = '/etc/sysctl.conf';
+    $sysctlConfigLocation   = ($customConfigLocation['sysctl']) ? $customConfigLocation['sysctl'] : '/etc/sysctl.conf';
     if (file_exists($sysctlConfigLocation)) {
-        $sysctlConfig['sysctl_config']                  = $sysctlConfigLocation;
-        $sysctlConfig['net.core.rmem_max']              = shell_exec('grep -i "net.core.rmem_max" ' . $sysctlConfigLocation);
-        $sysctlConfig['net.core.wmem_max']              = shell_exec('grep -i "net.core.wmem_max" ' . $sysctlConfigLocation);
-        $sysctlConfig['net.ipv4.tcp_rmem']              = shell_exec('grep -i "net.ipv4.tcp_rmem" ' . $sysctlConfigLocation);
-        $sysctlConfig['net.ipv4.tcp_wmem']              = shell_exec('grep -i "net.ipv4.tcp_wmem" ' . $sysctlConfigLocation);
-        $sysctlConfig['net.core.netdev_max_backlog']    = shell_exec('grep -i "net.ipv4.netdev_max_backlog" ' . $sysctlConfigLocation);
-        $sysctlConfig['net.ipv4.tcp_no_metrics_save']   = shell_exec('grep -i "net.core.tcp_no_metrics_save" ' . $sysctlConfigLocation);
-        $sysctlConfig['net.ipv4.tcp_congestion_control']= shell_exec('grep -i "net.ipv4.tcp_congestion_control" ' . $sysctlConfigLocation);
-        $sysctlConfig['net.ipv4.tcp_no_metrics_save']   = shell_exec('grep -i "net.ipv4.tcp_no_metrics_save" ' . $sysctlConfigLocation);
-        $sysctlConfig['net.ipv4.tcp_window_scaling']    = shell_exec('grep -i "net.ipv4.tcp_window_scaling" ' . $sysctlConfigLocation);
-        $sysctlConfig['net.ipv4.tcp_timestamps']        = shell_exec('grep -i "net.ipv4.tcp_timestamps" ' . $sysctlConfigLocation);
-        $sysctlConfig['net.ipv4.tcp_sack']              = shell_exec('grep -i "net.ipv4.tcp_sack" ' . $sysctlConfigLocation);
-        $sysctlConfig['net.core.somaxconn']             = shell_exec('grep -i "net.core.somaxconn" ' . $sysctlConfigLocation);
+        $sysctlConfig['sysctl_config']              = $sysctlConfigLocation;
+        foreach ($sysctlConfigurationFlags as $configFlag) {
+            $configValueString              = shell_exec('grep -iw "'.$configFlag.'" ' . $sysctlConfigLocation);
+            $sysctlConfig[$configFlag]      = false;
+            if ($configValueString) {
+                $configValue                = explode(" = ", $configValueString);
+                $sysctlConfig[$configFlag]  = $configValue[1];
+            }
+        }
     }
 
     return $sysctlConfig;
 }
 
-function getRedisConfig() {
+function getRedisConfig($redisConfigurationFlags, $customConfigLocation = false) {
     $redisConfig           = array();
-    $redisConfigLocation   = '/etc/redis/redis.conf';
+    $redisConfigLocation   = ($customConfigLocation['redis']) ? $customConfigLocation['redis'] : '/etc/redis/redis.conf';
     if (file_exists($redisConfigLocation)) {
-        $redisConfig['redis_config']                                            = $redisConfigLocation;
-        $redisConfig['session.redis.timeout']                                   = shell_exec('grep -i "net.core.rmem_max" ' . $redisConfigLocation);
-        $redisConfig['session.redis.disable_locking']                           = shell_exec('grep -i "session.redis.disable_locking" ' . $redisConfigLocation);
-        $redisConfig['session.redis.min_lifetime']                              = shell_exec('grep -i "session.redis.min_lifetime" ' . $redisConfigLocation);
-        $redisConfig['session.redis.max_lifetime']                              = shell_exec('grep -i "session.redis.max_lifetime" ' . $redisConfigLocation);
-        $redisConfig['cache.frontend.default.backend_options.read_timeout']     = shell_exec('grep -i "cache.frontend.default.backend_options.read_timeout" ' . $redisConfigLocation);
-        $redisConfig['cache.frontend.default.backend_options.connect_retries']  = shell_exec('grep -i "cache.frontend.default.backend_options.connect_retries" ' . $redisConfigLocation);
+        $redisConfig['redis_config']                = $redisConfigLocation;
+        foreach ($redisConfigurationFlags as $configFlag) {
+            $configValueString          = shell_exec('grep -iw "'.$configFlag.'" ' . $redisConfigLocation);
+            $redisConfig[$configFlag]   = false;
+            if ($configValueString) {
+                $configValue                = explode(" = ", $configValueString);
+                $redisConfig[$configFlag]   = $configValue[1];
+            }
+        }
     }
 
     return $redisConfig;
