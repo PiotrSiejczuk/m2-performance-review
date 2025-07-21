@@ -325,6 +325,7 @@ Inspired by community performance optimization guides
 Thanks to early adopters for bug reports and feature requests
 
 📝 Changelog
+
 **v1.0.1** (2024-01-21)
 - Added database-level head asset analysis
 - Enhanced Elasticsearch/OpenSearch detection and validation
