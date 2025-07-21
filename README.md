@@ -325,22 +325,20 @@ Inspired by community performance optimization guides
 Thanks to early adopters for bug reports and feature requests
 
 📝 Changelog
-v1.0.1 (2024-01-21)
+**v1.0.1** (2024-01-21)
+- Added database-level head asset analysis
+- Enhanced Elasticsearch/OpenSearch detection and validation
+- Fixed PHAR execution on CentOS/RHEL systems
+- Fixed HTML export format specifier issues
+- Added configuration drift detection for search engines
+- Improved error handling and fallback mechanisms
 
-Added database-level head asset analysis
-Enhanced Elasticsearch/OpenSearch detection and validation
-Fixed PHAR execution on CentOS/RHEL systems
-Fixed HTML export format specifier issues
-Added configuration drift detection for search engines
-Improved error handling and fallback mechanisms
-
-v1.0.0 (2024-01-17)
-
-Initial release with 14 analyzers
-Automated fix generation
-Multiple export formats
-Developer mode awareness
-Performance scoring system
+**v1.0.0** (2024-01-17)
+- Initial release with 14 analyzers
+- Automated fix generation
+- Multiple export formats
+- Developer mode awareness
+- Performance scoring system
 
 ---
 
