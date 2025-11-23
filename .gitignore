@@ -1,0 +1,51 @@
+# Composer
+/vendor/
+composer.lock
+
+# PHAR
+*.phar
+*.phar.gz
+
+# IDE
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+/coverage/
+/.phpunit.result.cache
+/phpunit.xml
+
+# Generated files
+/build/
+/dist/
+/output/
+*.log
+*.cache
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Generated reports
+performance-report.*
+ai-recommendations.*
+benchmark-results.*
+magento-infrastructure.tf
+magento-playbook.yml
+docker-compose.yml
+
+# Temporary files
+/tmp/
+*.tmp
+*.temp
+
+# Monitoring
+/monitoring-data/

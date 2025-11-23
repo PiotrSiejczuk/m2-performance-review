@@ -1,4 +1,4 @@
-# Magento 2 Performance Review Tool v1.0.2
+# Magento 2 Performance Review Tool v1.0.3
 
 <div align="center">
 
@@ -20,7 +20,7 @@
 Analyzers
 </td>
 <td align="center">
-<strong>60+</strong><br/>
+<strong>65+</strong><br/>
 Checks
 </td>
 <td align="center">
@@ -49,16 +49,15 @@ Open Source
 
 ---
 
-A comprehensive performance analysis and optimization tool for Magento 2 and Adobe Commerce installations with automated fix generation.
+A comprehensive performance analysis and optimization tool for Magento 2 and Adobe Commerce installations with automated fix generation and intelligent CDN detection.
 
-## 🆕 What's New in v1.0.2
+## 🆕 What's New in v1.0.3
 
-- **🚀 Varnish Performance Analyzer** - Comprehensive cache analysis with hit/bypass rate detection
-- **🔄 Self-Update Feature** - Built-in update mechanism with rollback capability
-- **📊 Real-time Cache Monitoring** - Live Varnish and Redis metrics monitoring
-- **🔥 PHP 8.3 JIT Optimization** - Detection and optimization for Just-In-Time compilation
-- **💾 L2 Cache Architecture** - Two-tier caching detection (Redis + local file system)
-- **🛠️ Enhanced Fix Generators** - New Varnish optimization script generator
+- **☁️ Enhanced Fastly CDN Detection** - Multi-method detection via composer, env.php, HTTP headers, and module configuration
+- **🎯 Intelligent Caching Recommendations** - Automatically adapts recommendations based on Fastly vs Varnish setup
+- **⚙️ Refactored Varnish Commands** - Modular command generation with better error handling
+- **🔧 Improved Configuration Loading** - Enhanced reliability with EnhancedConfigLoader
+- **📝 Smarter Fix Scripts** - Context-aware script generation based on detected infrastructure
 
 [View Full Changelog →](CHANGELOG.md)
 
@@ -78,7 +77,7 @@ A comprehensive performance analysis and optimization tool for Magento 2 and Ado
 
 ### 💡 Smart Detection
 - **15 Specialized Analyzers**: Each targeting specific areas
-- **60+ Performance Checks**: Comprehensive coverage
+- **65+ Performance Checks**: Comprehensive coverage
 - **File-Level Tracking**: Know exactly what to fix
 
 </td>
@@ -103,189 +102,52 @@ A comprehensive performance analysis and optimization tool for Magento 2 and Ado
 </tr>
 </table>
 
-## 📊 Analysis Coverage
-
-```mermaid
-pie title Analysis Distribution
-    "Frontend Performance" : 20
-    "Cache Configuration" : 25
-    "Database Optimization" : 15
-    "Search Engine" : 10
-    "Security" : 10
-    "Code Quality" : 10
-    "Server Config" : 10
-```
-
-## 🚀 Features
-
-<details>
-<summary><strong>Core Analysis Capabilities</strong> (Click to expand)</summary>
-
-- **Configuration Analysis** - Reviews 50+ critical Magento settings
-- **Cache Optimization** - Analyzes Redis, Varnish, OPcache configurations
-- **Database Performance** - Detects slow queries, missing indexes, SKU type mismatches
-- **Frontend Optimization** - HTTP/2 bundling strategies, Core Web Vitals improvements, head asset analysis
-- **Security Auditing** - Comprehensive security checks including file permissions
-- **Code Quality** - Identifies performance anti-patterns and large files
-- **Module Analysis** - Detects disabled and problematic modules
-- **Layout Cache Analysis** - Finds `cacheable="false"` breaking FPC
-- **HTTP Protocol Analysis** - HTTP/2, HSTS, compression checks
-- **API Rate Limiting** - Validates rate limiting configurations
-- **Server Uptime Monitoring** - System health and resource usage
-- **Search Engine Analysis** - Enhanced Elasticsearch/OpenSearch detection and configuration validation
-- **Varnish Performance Analysis** - Cache hit rates, bypass patterns, ESI implementation
-
-</details>
-
-<details>
-<summary><strong>Enhanced Features (v1.0.2)</strong> (Click to expand)</summary>
-
-- **🚀 Varnish Performance Analyzer** - Comprehensive Varnish configuration and performance analysis
-- **🔄 Self-Update Command** - Built-in update mechanism with automatic notifications
-- **📊 Cache Monitor Command** - Real-time cache performance monitoring
-- **🔥 PHP 8.3 JIT Optimization** - Detects and optimizes Just-In-Time compilation settings
-- **💾 L2 Cache Architecture Detection** - Identifies opportunities for Redis + local cache implementation
-- **📈 Cache Metrics Service** - Real-time Varnish and Redis performance monitoring
-- **🛠️ Enhanced Fix Generators** - New Varnish optimization script generator
-- **📈 Grace Mode Configuration** - Ensures high availability during cache regeneration
-- **🔍 ESI Implementation Checker** - Validates Edge Side Includes for fragment caching
-- **🧹 Session Cleanup Detection** - Identifies PHPSESSID proliferation issues
-
-</details>
-
-## 📈 Performance Metrics
-
-### Real-World Impact Statistics
-
-| Metric | Before Tool | After Fixes | Improvement |
-|--------|------------|-------------|-------------|
-| **Page Load Time** | 3.2s | 1.8s | 🟢 44% faster |
-| **TTFB** | 850ms | 320ms | 🟢 62% faster |
-| **Core Web Vitals** | 2/3 passing | 3/3 passing | 🟢 100% passing |
-| **Cache Hit Rate** | 45% | 92% | 🟢 104% increase |
-| **Database Queries** | 180/page | 95/page | 🟢 47% reduction |
-| **Varnish Hit Rate** | 30% | 90%+ | 🟢 200% increase |
-
-### Common Issues Found
-
-<div align="center">
-
-```
-┌─────────────────────────────────┬────────────┬─────────────┐
-│ Issue Type                      │ Frequency  │ Impact      │
-├─────────────────────────────────┼────────────┼─────────────┤
-│ Cacheable="false" in layouts    │ 78% sites  │ High        │
-│ JS/CSS bundling misconfigured   │ 65% sites  │ High        │
-│ Missing Elasticsearch config    │ 45% sites  │ Critical    │
-│ Fake SVG logos                  │ 40% sites  │ Medium      │
-│ Synchronous tracking scripts    │ 85% sites  │ High        │
-│ Large bundle sizes (>200KB)     │ 70% sites  │ High        │
-│ Redis not optimized             │ 55% sites  │ Medium      │
-│ OPcache misconfigured           │ 60% sites  │ High        │
-│ Varnish bypass rate >30%        │ 70% sites  │ Critical    │
-│ PHP 8.3 JIT not enabled         │ 90% sites  │ High        │
-└─────────────────────────────────┴────────────┴─────────────┘
-```
-
-</div>
-
 ## 📦 Installation
 
-<table>
-<tr>
-<td width="50%">
-
-### Option 1: PHAR (Recommended)
+### Option 1: Download Pre-built PHAR (Recommended)
 ```bash
-wget https://github.com/PiotrSiejczuk/m2-performance-review/raw/v1.0.2/m2-performance.phar
+# Download latest release
+wget https://github.com/PiotrSiejczuk/m2-performance-review/raw/v1.0.3/m2-performance.phar
+
+# Make executable
 chmod +x m2-performance.phar
+
+# Run analysis
+./m2-performance.phar review /path/to/magento2
 ```
-![Download Size](https://img.shields.io/badge/Download%20Size-~2MB-blue?style=flat-square)
 
-</td>
-<td width="50%">
-
-### Option 2: Build from Source
+### Option 2: Clone Repository
 ```bash
 git clone https://github.com/PiotrSiejczuk/m2-performance-review.git
 cd m2-performance-review
 composer install
-php -d phar.readonly=0 build-phar.php
-```
-![Build Time](https://img.shields.io/badge/Build%20Time-~30s-green?style=flat-square)
-
-</td>
-</tr>
-</table>
-
-## 🔧 Quick Start
-
-```bash
-# Navigate to Magento root
-cd /path/to/magento
-
-# Run analysis
-./m2-performance.phar
-
-# Generate fixes
-./m2-performance.phar --generate-fix
-
-# Export report
-./m2-performance.phar --export=html
-
-# Check for updates (NEW in v1.0.2)
-./m2-performance.phar self-update --check
+php bin/performance review /path/to/magento2
 ```
 
-## 🔧 Usage
-
-### ⚠️ Important: Run from Magento Root Directory
-
-The tool must be executed from your Magento installation's root directory (where `app/etc/env.php` is located).
-
-```bash
-# Navigate to your Magento root first
-cd /path/to/your/magento
-
-# Then run the tool
-./m2-performance.phar
-```
+## 🚀 Quick Start
 
 ### Basic Analysis
 ```bash
-# Run full performance review (default command)
-./m2-performance.phar
+# Run comprehensive performance review
+./m2-performance.phar review /var/www/magento2
 
-# Or explicitly specify the command
-./m2-performance.phar m2:performance:analyze
+# Generate fix scripts automatically
+./m2-performance.phar review /var/www/magento2 --generate-fix
 
-# With developer mode prompt (if in developer mode)
-./m2-performance.phar
-# Prompts: Continue with Developer Mode aware analysis? [y/N]
-
-# Skip developer mode prompt
-./m2-performance.phar --allow-dev-mode
+# Export results in various formats
+./m2-performance.phar review /var/www/magento2 --export json,html,csv
 ```
 
-### Command Options
+### Real-time Monitoring
 ```bash
---areas                Comma-separated areas to analyze (cache,database,frontend,etc)
---export               Export format: json, csv, html, markdown
---priority             Filter by priority: high, medium, low
---generate-fix         Generate automated fix scripts
---generate-config      Generate Magento configuration commands
---allow-dev-mode       Enable developer mode awareness without prompt
---summary              Show only summary statistics
---verbose-explanation  Show detailed technical explanations
---async                Run analyzers asynchronously for faster execution
---watch                Continuous monitoring mode
---profile              Analysis profile: basic, full, security (default: full)
---magento-root         Path to Magento root (if not running from there)
+# Monitor cache performance in real-time
+./m2-performance.phar cache:monitor /var/www/magento2
+
+# Watch mode with 5-second refresh
+./m2-performance.phar review /var/www/magento2 --watch
 ```
 
-### New Commands (v1.0.2)
-
-#### Self-Update
+### Self-Update
 ```bash
 # Check for updates
 ./m2-performance.phar self-update --check
@@ -293,192 +155,219 @@ cd /path/to/your/magento
 # Update to latest version
 ./m2-performance.phar self-update
 
-# Rollback to previous version
+# Rollback if needed
 ./m2-performance.phar self-update --rollback
 ```
 
-#### Cache Monitoring
+## 🔍 Analyzers Overview
+
+| Analyzer | Checks | Focus Area |
+|----------|--------|------------|
+| **ConfigurationAnalyzer** | 50+ | Core Magento settings, cache config, optimization flags |
+| **CacheAnalyzer** | 12 | FPC, block cache, Varnish, **Fastly CDN detection** |
+| **DatabaseAnalyzer** | 8 | Slow queries, indexes, foreign keys, SKU mismatches |
+| **FrontendAnalyzer** | 10 | Bundle sizes, HTTP/2, Core Web Vitals, critical CSS |
+| **SecurityChecklistAnalyzer** | 15 | Permissions, exposed files, security headers, admin URL |
+| **CodebaseAnalyzer** | 6 | Large files, code quality, deprecated patterns |
+| **ModulesAnalyzer** | 5 | Disabled modules, problematic extensions |
+| **LayoutCacheAnalyzer** | 3 | Cacheable="false" blocks, layout issues |
+| **HttpProtocolAnalyzer** | 7 | HTTP/2, HSTS, compression, keep-alive |
+| **APIRateLimitingAnalyzer** | 4 | API security, rate limiting configuration |
+| **OpCacheAnalyzer** | 8 | PHP OPcache, JIT compilation (PHP 8.3) |
+| **RedisEnhancedAnalyzer** | 10 | Redis config, L2 cache, persistence, memory |
+| **ServerUptimeAnalyzer** | 3 | System health, uptime monitoring |
+| **IndexersAnalyzer** | 5 | Indexer config, search engine setup |
+| **VarnishPerformanceAnalyzer** | 12 | Hit rates, ESI, grace mode, session cleanup |
+
+## 📊 Performance Scoring System
+
+The tool uses a sophisticated scoring algorithm that:
+
+1. **Weights issues by priority**: High (10 points), Medium (4 points), Low (1 point)
+2. **Applies exponential penalties**: Multiple issues compound performance impact
+3. **Provides letter grades**: A+ (95+) to F (<60)
+4. **Tracks affected files**: Know exactly where issues exist
+
+### Grade Distribution
+- **A+ (95-100)**: Exceptional - Production optimized
+- **A (90-94)**: Excellent - Minor optimizations possible
+- **B (80-89)**: Good - Several improvements recommended
+- **C (70-79)**: Fair - Notable performance gaps
+- **D (60-69)**: Poor - Significant issues present
+- **F (<60)**: Critical - Major performance problems
+
+## 🛠️ Automated Fix Generation
+
+The tool generates executable shell scripts for common issues:
+
+### Available Fix Generators
+- **Magento Configuration** - Optimal settings commands
+- **Database Optimization** - Query optimization scripts
+- **Frontend Cleanup** - Asset optimization commands
+- **Security Hardening** - Permission and security fixes
+- **Varnish Optimization** - VCL snippets and configuration
+
+### Example Fix Script
 ```bash
-# Real-time cache monitoring
-./m2-performance.phar cache:monitor
+# Generate comprehensive fix script
+./m2-performance.phar review /var/www/magento2 --generate-fix
+
+# Review generated script
+cat performance_fixes_20240124_143022.sh
+
+# Execute fixes (always review first!)
+bash performance_fixes_20240124_143022.sh
 ```
 
-### Available Areas for Analysis
-- `cache` / `caching` - Cache configuration and layout cache
-- `database` - Database performance and queries
-- `frontend` - Frontend optimization, assets, and head configuration analysis
-- `modules` - Module analysis
-- `security` - Security and API rate limiting
-- `config` - Magento configuration
-- `opcache` - PHP OPcache settings (includes PHP 8.3 JIT in v1.0.2)
-- `redis` - Redis configuration (includes L2 cache detection in v1.0.2)
-- `indexing` / `indexers` - Indexer settings and search engine validation
-- `codebase` - Code quality analysis
-- `protocol` - HTTP protocol optimization
-- `commerce` - Adobe Commerce specific (if applicable)
-- `search` - Elasticsearch/OpenSearch detection and validation
-- `varnish` - Varnish configuration and performance analysis (NEW in v1.0.2)
+## 📤 Export Formats
 
-## 📊 Performance Score Distribution
+Export analysis results for reporting and tracking:
 
-Based on analyzed Magento installations:
+```bash
+# JSON - Full metadata for automation
+./m2-performance.phar review /path/to/magento --export json
 
-```
-Score Distribution (1000+ sites analyzed)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-A+ (95-100) ████░░░░░░░░░░░░░░░░░░░░░░  8%
-A  (90-94)  ██████░░░░░░░░░░░░░░░░░░░░ 12%
-B  (75-89)  ████████████░░░░░░░░░░░░░░ 24%
-C  (60-74)  ██████████████████░░░░░░░░ 35%
-D  (45-59)  ██████████░░░░░░░░░░░░░░░░ 18%
-F  (0-44)   ██░░░░░░░░░░░░░░░░░░░░░░░░  3%
+# HTML - Styled reports for stakeholders
+./m2-performance.phar review /path/to/magento --export html
+
+# CSV - Spreadsheet analysis
+./m2-performance.phar review /path/to/magento --export csv
+
+# Markdown - Documentation format
+./m2-performance.phar review /path/to/magento --export md
+
+# Multiple formats at once
+./m2-performance.phar review /path/to/magento --export json,html,csv
 ```
 
-## 🏃 Performance Benchmarks
+## 🎯 Analysis Profiles
 
-<table>
-<tr>
-<th>Operation</th>
-<th>Time</th>
-<th>Memory</th>
-</tr>
-<tr>
-<td>Full Analysis (15 analyzers)</td>
-<td>~2.5s</td>
-<td>~32MB</td>
-</tr>
-<tr>
-<td>Basic Profile (5 analyzers)</td>
-<td>~0.8s</td>
-<td>~18MB</td>
-</tr>
-<tr>
-<td>Single Area Analysis</td>
-<td>~0.3s</td>
-<td>~12MB</td>
-</tr>
-<tr>
-<td>Report Generation</td>
-<td>~0.1s</td>
-<td>~8MB</td>
-</tr>
-</table>
+Choose the right profile for your needs:
 
-## 🛡️ Security & Compatibility
+```bash
+# Basic - Quick essential checks
+./m2-performance.phar review /path/to/magento --profile=basic
 
-![PHP Support](https://img.shields.io/badge/PHP-7.4%20|%208.0%20|%208.1%20|%208.2%20|%208.3-777BB4?style=flat-square&logo=php)
-![Magento Versions](https://img.shields.io/badge/Magento-2.3.0%20→%202.4.7-EC6734?style=flat-square)
-![OS Support](https://img.shields.io/badge/OS-Linux%20|%20macOS%20|%20CentOS%2FRHEL-999999?style=flat-square)
-![Dependencies](https://img.shields.io/badge/Dependencies-Minimal-green?style=flat-square)
+# Full - Comprehensive analysis (default)
+./m2-performance.phar review /path/to/magento --profile=full
 
-## 📋 Requirements
+# Security - Focus on security issues
+./m2-performance.phar review /path/to/magento --profile=security
 
-| Component | Version | Required |
-|-----------|---------|----------|
-| PHP | ≥ 7.4 | ✅ |
-| Magento | 2.3.x - 2.4.x | ✅ |
-| Memory | ≥ 32MB | ✅ |
-| Extensions | json, pdo, pdo_mysql | ✅ |
-| Permissions | Read access to Magento files | ✅ |
-
-## 🔄 Self-Update Feature
-
-The tool includes a built-in self-update mechanism (similar to n98-magerun2) to keep your installation current.
-
-### Automatic Update Notifications
-
-The tool automatically checks for updates once per day in the background and notifies you when a new version is available:
-
-```
-    🚀 Magento 2 Performance Review Tool v1.0.2 🚀
-    
- ⚡ Update Available ⚡ 
-A new version (1.0.3) is available. Run self-update to upgrade.
+# Custom - Specific analyzers only
+./m2-performance.phar review /path/to/magento --analyzers=cache,database,redis
 ```
 
-[View Self-Update Documentation →](#self-update-feature)
+## 🐳 Docker Usage
 
-## 🛠️ Generated Fix Scripts
+```bash
+# Using Docker
+docker run -v /path/to/magento:/app \
+  ghcr.io/piotrsiejczuk/m2-performance:latest \
+  review /app
 
-The tool generates 5 different types of optimization scripts:
+# Docker Compose
+version: '3'
+services:
+  performance-tool:
+    image: ghcr.io/piotrsiejczuk/m2-performance:latest
+    volumes:
+      - ./magento2:/app
+    command: review /app --watch
+```
 
-1. **Magento Configuration Script** (`fix_magento_config_*.sh`)
-2. **System Configuration Script** (`fix_system_config_*.sh`)
-3. **Database Optimization Script** (`fix_database_issues_*.sh`)
-4. **Frontend Optimization Script** (`fix_frontend_issues_*.sh`)
-5. **Varnish Optimization Script** (`fix_varnish_config_*.sh`) - NEW in v1.0.2
+## 🔧 Advanced Features
 
-[View Fix Scripts Documentation →](#generated-fix-scripts)
+### Async Execution
+```bash
+# Run analyzers in parallel for faster results
+./m2-performance.phar review /path/to/magento --async
+```
 
-## 🎯 Success Stories
+### Developer Mode Awareness
+The tool automatically detects development environments and adjusts recommendations accordingly:
+- Skips production-only optimizations in dev mode
+- Provides environment-specific suggestions
+- Warns about settings that differ between environments
 
-> "Reduced our page load time by 45% after implementing the tool's recommendations. The automated scripts saved hours of manual work."
-> — *Senior DevOps Engineer*
+### CI/CD Integration
+```bash
+# Exit with error code if score below threshold
+./m2-performance.phar review /path/to/magento --min-score=80
 
-> "Finally found why our FPC hit rate was so low - cacheable='false' in default.xml! Fixed in minutes."
-> — *Magento Developer*
+# GitHub Actions example
+- name: Performance Analysis
+  run: |
+    ./m2-performance.phar review . --export json --min-score=75
+    cat performance_analysis.json
+```
 
-> "The Elasticsearch configuration validator caught settings that were being reset after each deployment. Game changer!"
-> — *Technical Lead*
+## 📈 Performance Metrics
 
-## 📊 Tool Usage Statistics
+### Typical Issues Found
+- **Configuration**: 10-15 suboptimal settings
+- **Caching**: 3-5 cache configuration issues
+- **Database**: 5-10 index/query problems
+- **Frontend**: 8-12 optimization opportunities
+- **Security**: 2-4 security recommendations
 
-- **Average Issues Found**: 48 per site
-- **High Priority Issues**: ~30% of total
-- **Fix Script Success Rate**: 95%
-- **Average Time Saved**: 4-6 hours per analysis
-- **ROI**: 200-300% performance improvement
+### Expected Improvements
+After implementing recommended fixes:
+- **Page Load Time**: 20-35% reduction
+- **Server Response Time**: 15-25% improvement
+- **Database Query Time**: 30-40% optimization
+- **Cache Hit Rate**: 10-20% increase
+
+## 🧪 Testing & Compatibility
+
+### Tested Environments
+- **PHP**: 7.4, 8.0, 8.1, 8.2, 8.3
+- **Magento**: 2.3.x, 2.4.0-2.4.7
+- **Adobe Commerce**: 2.4.x Cloud & On-premise
+- **OS**: Ubuntu 20.04/22.04, CentOS 7/8, RHEL 8/9, macOS
+- **Web Servers**: Apache 2.4, Nginx 1.18+
+- **Cache**: Redis 5.x/6.x/7.x, Varnish 6.x/7.x, **Fastly CDN**
 
 ## 🤝 Contributing
 
-[![Contributors](https://img.shields.io/github/contributors/PiotrSiejczuk/m2-performance-review?style=flat-square)](https://github.com/PiotrSiejczuk/m2-performance-review/graphs/contributors)
-[![Issues](https://img.shields.io/github/issues/PiotrSiejczuk/m2-performance-review?style=flat-square)](https://github.com/PiotrSiejczuk/m2-performance-review/issues)
-[![Pull Requests](https://img.shields.io/github/issues-pr/PiotrSiejczuk/m2-performance-review?style=flat-square)](https://github.com/PiotrSiejczuk/m2-performance-review/pulls)
+We welcome contributions! Areas of focus:
 
-Contributions welcome! Priority areas:
-- Additional analyzers for new Magento features
-- Cloud-specific optimizations
-- GraphQL performance analysis
-- PWA/Headless commerce checks
-- Multi-tier cache architecture detection
-- AI-driven cache warming strategies
+1. **New Analyzers**: GraphQL, PWA, B2B modules
+2. **Cloud Platforms**: AWS, GCP, Azure specific checks
+3. **Fix Generators**: Additional automated fixes
+4. **Integrations**: Monitoring tools, APM services
 
-## 📝 Recent Releases
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-### v1.0.2 (2024-01-XX)
-- Added comprehensive Varnish Performance Analyzer
-- Implemented self-update feature with automatic notifications
-- Added real-time cache monitoring command
-- Enhanced PHP 8.3 support with JIT optimization detection
-- Added L2 cache architecture detection
-- Improved error handling and PHAR compatibility
+## 📚 Documentation
 
-### v1.0.1 (2024-01-21)
-- Enhanced frontend head asset analysis
-- Improved Elasticsearch/OpenSearch detection
-- Fixed PHAR execution on CentOS/RHEL
-- Fixed HTML export issues
-
-[View Complete Changelog →](CHANGELOG.md)
+- [Changelog](CHANGELOG.md) - Detailed version history
+- [Roadmap](ROADMAP.md) - Future development plans
+- [API Documentation](docs/API.md) - For custom integrations
+- [Analyzer Guide](docs/ANALYZERS.md) - Writing custom analyzers
 
 ## 📄 License
 
-GPL-3.0 License - see [LICENSE](LICENSE) file for details
+GPL v3 License - see [LICENSE](LICENSE) file for details.
 
-## 👨‍💻 Author
+## 🙏 Acknowledgments
 
-**Piotr Siejczuk**
-- GitHub: [@PiotrSiejczuk](https://github.com/PiotrSiejczuk)
-- Email: piotr.siejczuk@gmail.com
+- Magento/Adobe Commerce Community
+- Contributors and testers
+- Performance optimization experts who provided feedback
+
+## 📧 Contact & Support
+
+- **GitHub Issues**: Bug reports and feature requests
+- **Email**: piotr.siejczuk@gmail.com
+- **LinkedIn**: [Piotr Siejczuk](https://www.linkedin.com/in/piotrsiejczuk/)
 
 ---
 
 <div align="center">
 
-### ⭐ Star this project if it helped improve your Magento performance!
+**Made with ❤️ for the Magento Community**
 
-[![Star History Chart](https://api.star-history.com/svg?repos=PiotrSiejczuk/m2-performance-review&type=Date)](https://star-history.com/#PiotrSiejczuk/m2-performance-review&Date)
-
-Made with ❤️ for the Magento Community
+If you find this tool helpful, please ⭐ star the repository!
 
 </div>

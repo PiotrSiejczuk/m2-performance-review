@@ -5,7 +5,49 @@ All notable changes to the Magento 2 Performance Review Tool will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.2] - 2024-01-24
+## [1.0.3] - 2025-11-24
+
+### Added
+- **Enhanced Fastly CDN Detection** - Multi-method detection system:
+  - Composer.json package scanning
+  - env.php configuration checking
+  - HTTP header analysis (X-Served-By, X-Cache, Via headers)
+  - Module configuration validation
+  - Automatic adaptation of caching recommendations based on CDN type
+- **Intelligent Caching Recommendations** - Context-aware suggestions:
+  - Automatically detects Fastly vs Varnish setups
+  - Provides CDN-specific optimization paths
+  - Skips irrelevant recommendations based on detected infrastructure
+- **Enhanced Configuration Loading** - More reliable configuration detection:
+  - Uses EnhancedConfigLoader for better config precedence handling
+  - Improved fallback mechanisms for missing configurations
+
+### Changed
+- **Refactored VarnishCommandGenerator** - Complete rewrite for better maintainability:
+  - Modular command generation architecture
+  - Dynamic script generation instead of hardcoded VCL snippets
+  - Better error handling and status checking
+  - More flexible command composition
+- **Improved CacheAnalyzer** - Better separation of concerns:
+  - Separated Fastly and Varnish detection logic
+  - More granular recommendation generation
+  - Cleaner code organization
+- Increased total checks from 60+ to 65+
+- Improved detection accuracy for edge caching solutions
+
+### Fixed
+- False positive Varnish recommendations when Fastly is present
+- VarnishCommandGenerator script generation issues
+- Configuration detection edge cases
+- Redundant caching recommendations for CDN users
+
+### Technical Improvements
+- Better separation between CDN and on-premise caching logic
+- More robust HTTP header parsing for CDN detection
+- Improved code modularity in command generators
+- Enhanced error handling in configuration detection
+
+## [1.0.2] - 2025-07-24
 
 ### Added
 - **VarnishPerformanceAnalyzer** - Comprehensive Varnish cache analysis including:
@@ -48,7 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Command registration error handling
 - Export functionality when using `--export` without format
 
-## [1.0.1] - 2024-01-21
+## [1.0.1] - 2025-07-21
 
 ### Added
 - **Advanced Frontend Head Analysis** - Database-level scanning for heavy CSS/JS in head configuration across all scopes (Global, Website, Store)
@@ -73,7 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhanced developer mode awareness prompts
 - Better handling of missing configuration files
 
-## [1.0.0] - 2024-01-17
+## [1.0.0] - 2025-07-20
 
 ### Added
 - Initial release with 14 specialized analyzers:
