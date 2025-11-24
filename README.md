@@ -197,7 +197,7 @@ pie title Analysis Distribution
 
 ### Option 1: PHAR (Recommended)
 ```bash
-wget https://github.com/PiotrSiejczuk/m2-performance-review/releases/download/v1.0.2/m2-performance.phar
+wget https://github.com/PiotrSiejczuk/m2-performance-review/raw/v1.0.2/m2-performance.phar
 chmod +x m2-performance.phar
 ```
 ![Download Size](https://img.shields.io/badge/Download%20Size-~2MB-blue?style=flat-square)
