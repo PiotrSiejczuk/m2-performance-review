@@ -3,6 +3,8 @@
 namespace M2Performance\Analyzer;
 
 use M2Performance\Contract\AnalyzerInterface;
+use M2Performance\Service\EnhancedConfigLoader;
+use M2Performance\Service\StoreContext;
 use M2Performance\Helper\RecommendationCollector;
 use M2Performance\Model\Recommendation;
 use M2Performance\Trait\DevModeAwareTrait;
@@ -148,7 +150,7 @@ class ConfigurationAnalyzer implements AnalyzerInterface
         // Redis cache check
         $hasRedis = false;
         foreach ($env['cache']['frontend'] ?? [] as $frontend) {
-            if (stripos($frontend['backend'] ?? '', 'redis') !== false) {
+            if (is_array($frontend) && StoreContext::getRedisCacheBackendOptions($frontend) !== null) {
                 $hasRedis = true;
                 break;
             }

@@ -61,13 +61,22 @@ class DatabaseCommandGenerator extends BaseScriptGenerator
         $script = "";
         $title = $rec->getTitle();
         
-        $script .= "echo \"📋 {$title}\"\n";
+        $script .= $this->echoLine('📋 ' . $title);
         $script .= "echo \"" . str_repeat('-', strlen($title) + 5) . "\"\n";
         
         if (stripos($title, 'indexer') !== false) {
+            // Reindex only the indexers the analyzer reported; a blind full
+            // reindex on a large catalog can run for hours
+            $indexers = '';
+            if (preg_match('/indexer:reindex\s+([a-z0-9_ ]+)/i', $rec->getDetails(), $match) === 1) {
+                $indexers = ' ' . implode(' ', array_map(
+                    fn(string $indexer): string => $this->shellQuote($indexer),
+                    preg_split('/\s+/', trim($match[1])) ?: []
+                ));
+            }
             $script .= "echo \"  → Running indexer operations...\"\n";
             $script .= "php bin/magento indexer:status\n";
-            $script .= "php bin/magento indexer:reindex\n";
+            $script .= "php bin/magento indexer:reindex{$indexers}\n";
             $script .= "echo \"    ✓ Reindexing completed\"\n";
         } elseif (stripos($title, 'deadlock') !== false) {
             $script .= "echo \"  → Checking for deadlocks...\"\n";

@@ -65,7 +65,7 @@ class ConfigCommandGenerator extends BaseScriptGenerator
         $title = $rec->getTitle();
         $details = $rec->getDetails();
         
-        $script .= "echo \"📋 {$title}\"\n";
+        $script .= $this->echoLine('📋 ' . $title);
         $script .= "echo \"" . str_repeat('-', strlen($title) + 5) . "\"\n";
         
         // Extract config commands from details
@@ -74,16 +74,17 @@ class ConfigCommandGenerator extends BaseScriptGenerator
                 $path = $match[1];
                 $value = $match[2];
                 
-                $script .= "echo \"  → Setting {$path} = {$value}\"\n";
-                $script .= "if php bin/magento config:set \"{$path}\" \"{$value}\" --lock-config 2>/dev/null; then\n";
-                $script .= "    echo \"    ✓ Successfully set {$path}\"\n";
+                $script .= $this->echoLine("  → Setting {$path} = {$value}");
+                $script .= 'if php bin/magento config:set ' . $this->shellQuote($path) . ' '
+                    . $this->shellQuote($value) . " --lock-config 2>/dev/null; then\n";
+                $script .= '    ' . $this->echoLine("    ✓ Successfully set {$path}");
                 $script .= "else\n";
-                $script .= "    echo \"    ⚠ Could not set {$path} (may already be locked or invalid)\"\n";
+                $script .= '    ' . $this->echoLine("    ⚠ Could not set {$path} (may already be locked or invalid)");
                 $script .= "fi\n";
             }
         } else {
             // Generic handling for other config recommendations
-            $script .= "echo \"  → {$title}\"\n";
+            $script .= $this->echoLine("  → {$title}");
             $script .= "echo \"    Manual action required. See details in analysis report.\"\n";
         }
         

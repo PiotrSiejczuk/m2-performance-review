@@ -1,37 +1,22 @@
 <?php
 namespace M2Performance\Command;
 
-use M2Performance\Analyzer\AdobeCommerceAnalyzer;
-use M2Performance\Analyzer\APIRateLimitingAnalyzer;
-use M2Performance\Analyzer\CacheAnalyzer;
-use M2Performance\Analyzer\CodebaseAnalyzer;
-use M2Performance\Analyzer\ConfigurationAnalyzer;
-use M2Performance\Analyzer\DatabaseAnalyzer;
-use M2Performance\Analyzer\FrontendAnalyzer;
-use M2Performance\Analyzer\IndexersAnalyzer;
-use M2Performance\Analyzer\LayoutCacheAnalyzer;
-use M2Performance\Analyzer\ModulesAnalyzer;
-use M2Performance\Analyzer\OpCacheAnalyzer;
-use M2Performance\Analyzer\RedisEnhancedAnalyzer;
-use M2Performance\Analyzer\SecurityChecklistAnalyzer;
-use M2Performance\Analyzer\ServerUptimeAnalyzer;
-use M2Performance\Analyzer\HttpProtocolAnalyzer;
-use M2Performance\Analyzer\VarnishPerformanceAnalyzer;
-use M2Performance\Helper\RecommendationCollector;
 use M2Performance\Model\Recommendation;
-use M2Performance\Service\AsyncCheckRunner;
-use M2Performance\Service\EnvironmentLoader;
-use M2Performance\Service\InfrastructureGenerator;
+use M2Performance\Service\AnalysisRunner;
+use M2Performance\Service\BaselineManager;
 use M2Performance\Service\ConfigCommandGenerator;
-use M2Performance\Service\SystemCommandGenerator;
 use M2Performance\Service\DatabaseCommandGenerator;
-use M2Performance\Service\FrontendCommandGenerator;
-use M2Performance\Service\XmlReader;
-use M2Performance\Service\CacheMetricsService;
-use M2Performance\Service\UpdateChecker;
 use M2Performance\Service\EnhancedConfigLoader;
-use M2Performance\Service\BaseScriptGenerator;
+use M2Performance\Service\FrontendCommandGenerator;
+use M2Performance\Service\HtmlReportRenderer;
+use M2Performance\Service\InfrastructureGenerator;
+use M2Performance\Service\SarifExporter;
+use M2Performance\Service\StoreContext;
+use M2Performance\Service\SystemCommandGenerator;
+use M2Performance\Service\ToolConfigLoader;
+use M2Performance\Service\UpdateChecker;
 use M2Performance\Service\VarnishCommandGenerator;
+use M2Performance\ToolVersion;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputInterface;
@@ -48,12 +33,33 @@ class M2PerformanceCommand extends Command
 
     protected static $defaultName = 'm2:performance:analyze';
 
-    protected $toolVersion = '1.0.3';
+    protected $toolVersion = ToolVersion::VERSION;
+
+    /** CLI area aliases -> analyzer identifiers (identifiers themselves are accepted too). */
+    private const AREA_MAP = [
+        'cache' => ['cache'],
+        'caching' => ['cache', 'layout-cache', 'varnish'],
+        'database' => ['database'],
+        'frontend' => ['frontend'],
+        'modules' => ['modules'],
+        'security' => ['security', 'api-security'],
+        'config' => ['config'],
+        'opcache' => ['opcache'],
+        'redis' => ['redis'],
+        'indexing' => ['indexers'],
+        'codebase' => ['codebase', 'static-code'],
+        'static-code' => ['static-code'],
+        'static' => ['static-code'],
+        'protocol' => ['protocol'],
+        'commerce' => ['commerce'],
+        'varnish' => ['varnish'],
+    ];
 
     private ?string $magentoRoot = null;
-    private array $analyzers = [];
-    private array $allAvailableAnalyzers = [];
-    private ?RecommendationCollector $collector = null;
+    private ?AnalysisRunner $runner = null;
+    private ?ToolConfigLoader $toolConfig = null;
+    /** @var Recommendation[] Unfiltered results of the last run (score, baseline, dashboard). */
+    private array $lastRecommendations = [];
     private array $analyzerTimings = [];
     private float $totalExecutionTime = 0;
     private int $executedAnalyzers = 0;
@@ -69,33 +75,36 @@ class M2PerformanceCommand extends Command
     protected function configure(): void
     {
         $this
+            ->setAliases(['review'])
             ->setDescription('Analyze Magento 2 performance and provide recommendations')
             ->setHelp('Analyzes Magento 2 configuration, security, caching, and provides actionable recommendations.')
             ->addOption('areas', 'a', InputOption::VALUE_REQUIRED, 'Comma-separated list of areas to analyze')
-            ->addOption('export', 'e', InputOption::VALUE_REQUIRED, 'Export results to file (json, csv, html, markdown)')
+            ->addOption('export', 'e', InputOption::VALUE_REQUIRED, 'Export results to file (json, csv, html, markdown, sarif)')
             ->addOption('priority', 'p', InputOption::VALUE_REQUIRED, 'Filter by minimum priority (low, medium, high)')
             ->addOption('generate-fix', 'f', InputOption::VALUE_NONE, 'Generate fix scripts for recommendations')
             ->addOption('allow-dev-mode', null, InputOption::VALUE_NONE, 'Enable developer mode awareness for adjusted recommendations')
             ->addOption('summary', 's', InputOption::VALUE_NONE, 'Show only summary statistics')
             ->addOption('verbose-explanation', null, InputOption::VALUE_NONE, 'Show detailed explanations for each recommendation')
             ->addOption('magento-root', null, InputOption::VALUE_REQUIRED, 'Path to Magento root', getcwd())
-            ->addOption('async', null, InputOption::VALUE_NONE, 'Run analyzers asynchronously')
+            ->addOption('async', null, InputOption::VALUE_NONE, 'Reserved: parallel execution is not implemented yet (analyzers run sequentially)')
             ->addOption('watch', 'w', InputOption::VALUE_NONE, 'Watch mode - continuous monitoring')
             ->addOption('profile', null, InputOption::VALUE_REQUIRED, 'Check profile (basic, full, security)', 'full')
-            ->addOption('generate-config', null, InputOption::VALUE_NONE, 'Generate Magento config commands');
+            ->addOption('generate-config', null, InputOption::VALUE_NONE, 'Generate Magento config commands')
+            ->addOption('compare-to', null, InputOption::VALUE_REQUIRED, 'Compare results against a saved baseline (see baseline command)')
+            ->addOption('config', null, InputOption::VALUE_REQUIRED, 'Path to .m2perf.json tool configuration file')
+            ->addOption('continue-on-error', null, InputOption::VALUE_NONE, 'Continue analysis when an individual analyzer fails (CI/CD friendly)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->magentoRoot = $input->getOption('magento-root');
-        $profile = $input->getOption('profile');
-        $this->collector = new RecommendationCollector();
+        $profile = (string)$input->getOption('profile');
 
         // Clear the screen first
         $this->clearScreen($output);
 
         // Detect Magento mode early
-        $this->magentoMode = $this->detectMagentoMode($this->magentoRoot);
+        $this->magentoMode = StoreContext::forRoot($this->magentoRoot)->getMagentoMode();
 
         // Check developer mode awareness BEFORE rendering header
         if ($this->magentoMode === 'developer') {
@@ -110,31 +119,49 @@ class M2PerformanceCommand extends Command
         $this->renderHeader($output);
 
         // Check for updates and notify
-        $this->checkAndNotifyUpdates($output);
+        $this->checkAndNotifyUpdates($input, $output);
 
-        $this->initializeAnalyzers($this->magentoRoot, $profile);
+        $configPath = $input->getOption('config');
+        $this->toolConfig = new ToolConfigLoader(
+            is_string($configPath) === true ? $configPath : null,
+            $this->magentoRoot
+        );
+        $this->runner = $this->createRunner();
 
-        // Configure analyzers with mode information
-        $this->configureAnalyzersForMode();
+        $selected = $this->resolveSelectedAnalyzers($profile, $input->getOption('areas'));
+        if (count($selected) === 0) {
+            $output->writeln(sprintf(
+                '<error>No analyzers selected (profile "%s", areas "%s").</error>',
+                $profile,
+                (string)$input->getOption('areas')
+            ));
+            $output->writeln('Valid areas: ' . implode(', ', array_keys(self::AREA_MAP)));
+            $output->writeln('Valid analyzers: ' . implode(', ', $this->runner->getAvailableAnalyzerNames()));
 
-        // Filter by areas if specified
-        if ($areas = $input->getOption('areas')) {
-            $this->filterAnalyzersByAreas($areas);
+            return Command::INVALID;
         }
 
         if ($input->getOption('watch')) {
-            return $this->runWatchMode($input, $output);
+            return $this->runWatchMode($profile, $selected, $output);
         }
 
-        // Execute analyzers
         if ($input->getOption('async')) {
-            $this->runAsync($output);
-        } else {
-            $this->runSync($output);
+            $output->writeln('<comment>Note: --async is not parallel yet; analyzers run sequentially.</comment>');
         }
 
-        // Get recommendations
-        $recommendations = $this->collector->getRecommendations();
+        $this->runAnalysis($profile, $selected, $input->getOption('continue-on-error') === true, $output);
+
+        $recommendations = $this->lastRecommendations;
+
+        if (getenv('M2PERFORMANCE_DEBUG') === '1') {
+            $recommendations[] = new Recommendation(
+                'debug',
+                'Configuration Debug Information',
+                Recommendation::PRIORITY_LOW,
+                $this->generateConfigDebugInfo((new EnhancedConfigLoader($this->magentoRoot))->getAllConfig()),
+                'This shows how configuration values are being detected.'
+            );
+        }
 
         // Filter by priority if specified
         $priority = $input->getOption('priority');
@@ -157,10 +184,16 @@ class M2PerformanceCommand extends Command
         // Sort by priority (high to low)
         usort($recommendations, fn($a, $b) => $b->getPriority() <=> $a->getPriority());
 
+        // Compare against a saved baseline if requested
+        if ($baselineName = $input->getOption('compare-to')) {
+            $this->compareToBaseline((string)$baselineName, $profile, $output);
+        }
+
         // Export if requested
         if ($exportFormat = $input->getOption('export')) {
-            $this->exportResults($recommendations, $exportFormat, $output);
-            return Command::SUCCESS;
+            return $this->exportResults($recommendations, $exportFormat, $output) === true
+                ? Command::SUCCESS
+                : Command::FAILURE;
         }
 
         // Show summary if requested
@@ -199,35 +232,11 @@ class M2PerformanceCommand extends Command
 
     private function clearScreen(OutputInterface $output): void
     {
-        // Check if we're in a terminal that supports clearing
-        if (function_exists('posix_isatty') && posix_isatty(STDOUT)) {
-            // Clear screen using ANSI escape codes
+        // Only clear an interactive terminal: shelling out to clear/cls in CI or
+        // when piping printed "TERM environment variable not set" and escape noise
+        if (function_exists('stream_isatty') && @stream_isatty(STDOUT)) {
             $output->write("\033[2J\033[H");
-        } elseif (stripos(PHP_OS, 'WIN') === 0) {
-            // Windows
-            system('cls');
-        } else {
-            // Unix/Linux/Mac
-            system('clear');
         }
-    }
-
-    private function detectMagentoMode(string $magentoRoot): string
-    {
-        // Check MAGE_MODE environment variable first
-        $mageMode = getenv('MAGE_MODE');
-        if ($mageMode) {
-            return $mageMode;
-        }
-
-        // Check env.php
-        $envPath = $magentoRoot . '/app/etc/env.php';
-        if (file_exists($envPath)) {
-            $env = include $envPath;
-            return $env['MAGE_MODE'] ?? 'default';
-        }
-
-        return 'default';
     }
 
     private function promptForDevModeAwareness(InputInterface $input, OutputInterface $output): bool
@@ -258,185 +267,88 @@ class M2PerformanceCommand extends Command
         return $devModeAware;
     }
 
-    private function configureAnalyzersForMode(): void
+    private function createRunner(): AnalysisRunner
     {
-        foreach ($this->analyzers as $analyzer) {
-            // Set dev mode awareness
-            if (method_exists($analyzer, 'setDevModeAware')) {
-                $analyzer->setDevModeAware($this->isDevModeAware);
-            }
-            // Set actual Magento mode
-            if (method_exists($analyzer, 'setMagentoMode')) {
-                $analyzer->setMagentoMode($this->magentoMode);
-            }
-        }
+        $runner = new AnalysisRunner($this->magentoRoot, $this->toolConfig);
+        $runner->configureMode($this->magentoMode, $this->isDevModeAware);
+
+        return $runner;
     }
 
-    private function initializeAnalyzers(string $magentoRoot, string $profile): void
+    /**
+     * Analyzer identifiers for the profile, narrowed by --areas when given.
+     *
+     * @return string[]
+     */
+    private function resolveSelectedAnalyzers(string $profile, ?string $areas): array
     {
-        // Use enhanced configuration loader
-        $configLoader = new EnhancedConfigLoader($magentoRoot);
-        $coreConfig = $configLoader->getAllConfig();
-        
-        // Legacy XML reader for module detection and Adobe Commerce check
-        $xmlReader = new XmlReader($magentoRoot);
-        $isAdobeCommerce = $xmlReader->isAdobeCommerce();
-        
-        $envLoader = new EnvironmentLoader($magentoRoot);
-
-        $this->allAvailableAnalyzers = [
-            'config' => new ConfigurationAnalyzer($magentoRoot, $coreConfig, $isAdobeCommerce, $this->collector),
-            'cache' => new CacheAnalyzer($magentoRoot, $coreConfig, $this->collector),
-            'database' => new DatabaseAnalyzer($magentoRoot, $this->collector),
-            'modules' => new ModulesAnalyzer($magentoRoot, $this->collector),
-            'codebase' => new CodebaseAnalyzer($magentoRoot, $this->collector),
-            'frontend' => new FrontendAnalyzer($magentoRoot, $coreConfig, $this->collector),
-            'indexers' => new IndexersAnalyzer($magentoRoot, $coreConfig, $this->collector),
-            'opcache' => new OpCacheAnalyzer($this->collector),
-            'redis' => new RedisEnhancedAnalyzer($magentoRoot, $this->collector),
-            'api-security' => new APIRateLimitingAnalyzer($magentoRoot, $this->collector),
-            'security' => new SecurityChecklistAnalyzer($magentoRoot, $this->collector),
-            'layout-cache' => new LayoutCacheAnalyzer($magentoRoot, $this->collector),
-            'uptime' => new ServerUptimeAnalyzer($this->collector),
-            'protocol' => new HttpProtocolAnalyzer($magentoRoot, $coreConfig, $this->collector),
-            'varnish' => new VarnishPerformanceAnalyzer($magentoRoot, $this->collector),
-        ];
-
-        if ($isAdobeCommerce) {
-            $this->allAvailableAnalyzers['commerce'] = new AdobeCommerceAnalyzer(
-                $magentoRoot, 
-                $coreConfig, 
-                true, 
-                $envLoader, 
-                $this->collector
-            );
+        $profileAnalyzers = array_keys($this->runner->resolveProfile($profile));
+        if ($areas === null || trim($areas) === '') {
+            return $profileAnalyzers;
         }
 
-        // Add debug output if requested
-        if (getenv('M2PERFORMANCE_DEBUG') === '1') {
-            $this->collector->add(
-                'debug',
-                'Configuration Debug Information',
-                Recommendation::PRIORITY_LOW,
-                $this->generateConfigDebugInfo($coreConfig),
-                'This shows how configuration values are being detected.'
-            );
-        }
-
-        $this->analyzers = match($profile) {
-            'basic' => [
-                'config' => $this->allAvailableAnalyzers['config'],
-                'cache' => $this->allAvailableAnalyzers['cache'],
-                'redis' => $this->allAvailableAnalyzers['redis'],
-                'opcache' => $this->allAvailableAnalyzers['opcache'],
-                'uptime' => $this->allAvailableAnalyzers['uptime'],
-                'varnish' => $this->allAvailableAnalyzers['varnish']
-            ],
-            'security' => [
-                'security' => $this->allAvailableAnalyzers['security'],
-                'api-security' => $this->allAvailableAnalyzers['api-security'],
-                'uptime' => $this->allAvailableAnalyzers['uptime']
-            ],
-            default => $this->allAvailableAnalyzers
-        };
-    }
-
-    private function filterAnalyzersByAreas(string $areas): void
-    {
-        $selectedAreas = array_map('trim', explode(',', $areas));
-        $areaMap = [
-            'cache' => ['cache'],
-            'caching' => ['cache', 'layout-cache', 'varnish'],
-            'database' => ['database'],
-            'frontend' => ['frontend'],
-            'modules' => ['modules'],
-            'security' => ['security', 'api-security'],
-            'config' => ['config'],
-            'opcache' => ['opcache'],
-            'redis' => ['redis'],
-            'indexing' => ['indexers'],
-            'codebase' => ['codebase'],
-            'protocol' => ['protocol'],
-            'commerce' => ['commerce'],
-            'varnish' => ['varnish']
-        ];
-
-        $analyzersToKeep = [];
-        foreach ($selectedAreas as $area) {
-            if (isset($areaMap[$area])) {
-                foreach ($areaMap[$area] as $analyzerKey) {
-                    if (isset($this->analyzers[$analyzerKey])) {
-                        $analyzersToKeep[$analyzerKey] = $this->analyzers[$analyzerKey];
-                    }
-                }
+        $requested = [];
+        foreach (array_map('trim', explode(',', $areas)) as $area) {
+            foreach (self::AREA_MAP[$area] ?? [$area] as $analyzerKey) {
+                $requested[] = $analyzerKey;
             }
         }
 
-        $this->analyzers = $analyzersToKeep;
+        return array_values(array_intersect($profileAnalyzers, $requested));
     }
 
-    private function runSync(OutputInterface $output): void
+    /**
+     * @param string[] $selected
+     */
+    private function runAnalysis(string $profile, array $selected, bool $continueOnError, OutputInterface $output): void
     {
-        $totalStartTime = microtime(true);
-
-        $progress = new ProgressBar($output, count($this->analyzers));
-        $progress->start();
-
-        foreach ($this->analyzers as $name => $analyzer) {
-            $startTime = microtime(true);
-            $analyzer->analyze();
-            $endTime = microtime(true);
-
-            $this->analyzerTimings[$this->getAnalyzerName($name)] = ($endTime - $startTime) * 1000;
-            $this->executedAnalyzers++;
-            $progress->advance();
+        // Progress bar only on ANSI terminals: in plain output (CI, pipes) Symfony prints
+        // one line per redraw and its throttled final redraw glues onto the next output
+        $progress = null;
+        if ($output->isDecorated() === true) {
+            $progress = new ProgressBar($output, count($selected));
+            $progress->start();
+        } else {
+            $output->writeln(sprintf('Running %d analyzers...', count($selected)));
         }
 
-        $this->totalExecutionTime = (microtime(true) - $totalStartTime) * 1000;
+        $this->lastRecommendations = $this->runner->run(
+            $profile,
+            $selected,
+            $continueOnError,
+            static function () use ($progress): void {
+                $progress?->advance();
+            }
+        );
 
-        $progress->finish();
-
-        // Clear the progress bar line
-        $output->write("\r\033[K");
-    }
-
-    private function runAsync(OutputInterface $output): void
-    {
-        $startTime = microtime(true);
-
-        $runner = new AsyncCheckRunner();
-        foreach ($this->analyzers as $analyzer) {
-            $runner->addAnalyzer($analyzer);
+        if ($progress !== null) {
+            $progress->finish();
+            $progress->clear();
         }
 
-        $runner->runAsync($output);
-
-        $this->totalExecutionTime = (microtime(true) - $startTime) * 1000;
-        $this->executedAnalyzers = count($this->analyzers);
-
-        // For async mode, individual timings aren't meaningful
         $this->analyzerTimings = [];
+        foreach ($this->runner->getAnalyzerTimings() as $name => $timeMs) {
+            $this->analyzerTimings[$this->getAnalyzerName($name)] = $timeMs;
+        }
+        $this->executedAnalyzers = count($this->analyzerTimings);
+        $this->totalExecutionTime = $this->runner->getTotalExecutionTime();
     }
 
-    private function runWatchMode(InputInterface $input, OutputInterface $output): int
+    /**
+     * @param string[] $selected
+     */
+    private function runWatchMode(string $profile, array $selected, OutputInterface $output): int
     {
         $output->writeln('<comment>Starting watch mode... Press Ctrl+C to stop</comment>');
 
         while (true) {
-            $output->write("\033[2J\033[H");
+            // Fresh runner + context per cycle so configuration changes are picked up
+            StoreContext::reset();
+            $recommendations = $this->createRunner()->run($profile, $selected, true);
+
+            $this->clearScreen($output);
             $output->writeln('<info>Performance Monitor - ' . date('Y-m-d H:i:s') . '</info>');
-
-            $this->collector = new RecommendationCollector();
-
-            foreach ($this->analyzers as $analyzer) {
-                try {
-                    $analyzer->analyze();
-                } catch (\Exception $e) {
-                    $output->writeln("<error>Error: {$e->getMessage()}</error>");
-                }
-            }
-
-            $this->displayCompactResults($this->collector->getRecommendations(), $output);
+            $this->displayCompactResults($recommendations, $output);
             sleep(5);
         }
     }
@@ -447,9 +359,9 @@ class M2PerformanceCommand extends Command
 
         // Configure table style for better rendering
         $style = clone Table::getStyleDefinition('box');
-        $style->setVerticalBorderChars('║', '║', '║');
+        $style->setVerticalBorderChars('║', '│');
         $style->setHorizontalBorderChars('═', '─');
-        $style->setCrossingChars('╔', '╤', '╗', '╟', '┼', '╢', '╚', '╧', '╝', '╠', '╪', '╣');
+        $style->setCrossingChars('┼', '╔', '╤', '╗', '╢', '╝', '╧', '╚', '╟', '╠', '╪', '╣');
         $table->setStyle($style);
 
         // Set headers
@@ -565,7 +477,7 @@ class M2PerformanceCommand extends Command
         }
     }
 
-    private function exportResults(array $recommendations, string $format, OutputInterface $output): void
+    private function exportResults(array $recommendations, string $format, OutputInterface $output): bool
     {
         $data = array_map(function ($rec) {
             $result = [
@@ -604,7 +516,7 @@ class M2PerformanceCommand extends Command
 
             case 'csv':
                 $fp = fopen($filename, 'w');
-                fputcsv($fp, ['Area', 'Priority', 'Title', 'Details', 'Explanation', 'Affected Files']);
+                fputcsv($fp, ['Area', 'Priority', 'Title', 'Details', 'Explanation', 'Affected Files'], ',', '"', '\\');
                 foreach ($data as $row) {
                     fputcsv($fp, [
                         $row['area'],
@@ -613,14 +525,20 @@ class M2PerformanceCommand extends Command
                         $row['details'],
                         $row['explanation'] ?? '',
                         isset($row['affected_files']) ? implode('; ', $row['affected_files']) : ''
-                    ]);
+                    ], ',', '"', '\\');
                 }
                 fclose($fp);
                 break;
 
             case 'html':
-                $html = $this->generateHtmlReport($data);
-                file_put_contents($filename, $html);
+                $score = $this->runner->computeScore($this->lastRecommendations);
+                $renderer = new HtmlReportRenderer();
+                file_put_contents($filename, $renderer->render(
+                    array_values($recommendations),
+                    StoreContext::forRoot($this->magentoRoot)->getBaseSecureUrl(),
+                    ['score' => $score['score'], 'grade' => $score['grade']],
+                    ToolVersion::VERSION
+                ));
                 break;
 
             case 'markdown':
@@ -628,86 +546,20 @@ class M2PerformanceCommand extends Command
                 file_put_contents($filename, $markdown);
                 break;
 
+            case 'sarif':
+                $exporter = new SarifExporter($this->magentoRoot);
+                file_put_contents($filename, $exporter->export($data, ToolVersion::VERSION));
+                break;
+
             default:
-                $output->writeln('<error>Unsupported export format: ' . $format . '</error>');
-                return;
+                $output->writeln('<error>Unsupported export format: ' . $format
+                    . ' (supported: json, csv, html, markdown, sarif)</error>');
+                return false;
         }
 
         $output->writeln('<info>Results exported to: ' . $filename . '</info>');
-    }
 
-    private function generateHtmlReport(array $data): string
-    {
-        $timestamp = date('Y-m-d H:i:s');
-
-        // Use heredoc without sprintf to avoid format specifier issues
-        $html = <<<HTML
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Magento 2 Performance Report</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        h1 { color: #333; }
-        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; vertical-align: top; }
-        th { background-color: #f2f2f2; font-weight: bold; }
-        tr:nth-child(even) { background-color: #f9f9f9; }
-        .priority-high { color: #d32f2f; font-weight: bold; }
-        .priority-medium { color: #f57c00; font-weight: bold; }
-        .priority-low { color: #388e3c; }
-        .details { white-space: pre-wrap; font-size: 0.9em; }
-        .files { background-color: #f5f5f5; padding: 10px; margin-top: 10px; border-radius: 5px; }
-        .file-list { font-family: monospace; font-size: 0.9em; }
-    </style>
-</head>
-<body>
-    <h1>Magento 2 Performance Analysis Report</h1>
-    <p>Generated: {$timestamp}</p>
-    <table>
-        <thead>
-            <tr>
-                <th>Area</th>
-                <th>Priority</th>
-                <th>Recommendation</th>
-                <th>Details</th>
-                <th>Explanation</th>
-            </tr>
-        </thead>
-        <tbody>
-HTML;
-
-        foreach ($data as $row) {
-            $priorityClass = 'priority-' . strtolower($row['priority_label']);
-            $filesHtml = '';
-
-            if (!empty($row['affected_files'])) {
-                $filesHtml = '<div class="files"><strong>Affected Files:</strong><div class="file-list">';
-                foreach ($row['affected_files'] as $file) {
-                    $filesHtml .= htmlspecialchars($file) . "<br>";
-                }
-                $filesHtml .= '</div></div>';
-            }
-
-            $area = htmlspecialchars($row['area']);
-            $priorityLabel = htmlspecialchars($row['priority_label']);
-            $title = htmlspecialchars($row['title']);
-            $details = htmlspecialchars($row['details']);
-            $explanation = htmlspecialchars($row['explanation'] ?? '');
-
-            $html .= <<<ROW
-            <tr>
-                <td>{$area}</td>
-                <td class="{$priorityClass}">{$priorityLabel}</td>
-                <td>{$title}</td>
-                <td class="details">{$details}{$filesHtml}</td>
-                <td class="details">{$explanation}</td>
-            </tr>
-ROW;
-        }
-
-        $html .= '</tbody></table></body></html>';
-        return $html;
+        return true;
     }
 
     private function generateMarkdownReport(array $data): string
@@ -770,6 +622,9 @@ ROW;
         $systemRecs = [];
         $databaseRecs = [];
         $frontendRecs = [];
+        $varnishRecs = [];
+        // Fastly is managed Varnish at the edge: a local varnishstat/VCL script cannot apply
+        $isFastly = StoreContext::forRoot($this->magentoRoot)->isFastly();
 
         foreach ($recommendations as $rec) {
             $area = $rec->getArea();
@@ -796,7 +651,7 @@ ROW;
             }
 
             // Varnish-related
-            if ($area === 'varnish') {
+            if ($area === 'varnish' && $isFastly === false) {
                 $varnishRecs[] = $rec;
             }
         }
@@ -815,7 +670,7 @@ ROW;
 
         // Generate System Script
         if (!empty($systemRecs)) {
-            $systemGenerator = new SystemCommandGenerator();
+            $systemGenerator = new SystemCommandGenerator($this->magentoMode === 'developer');
             $filename = $systemGenerator->generate($systemRecs);
             if ($filename) {
                 $output->writeln("<comment>Generated system config script: {$filename}</comment>");
@@ -863,6 +718,14 @@ ROW;
     private function displayDashboardStatistics(OutputInterface $output): void
     {
         $output->writeln("\n📊 <comment>Dashboard Statistics 📊</comment>");
+
+        $baseUrl = StoreContext::forRoot($this->magentoRoot)->getBaseSecureUrl();
+        $output->writeln(sprintf(
+            '<info>Target store:</info> %s',
+            $baseUrl !== null
+                ? $baseUrl
+                : '(not resolvable - no default-scope base URL in env vars, env.php, config.php or the database)'
+        ));
 
         $systemInfo = $this->getSystemInfo();
         $recommendationsSummary = $this->getRecommendationsSummary();
@@ -920,34 +783,16 @@ ROW;
 
     private function getRecommendationsSummary(): array
     {
-        $recommendations = $this->collector->getRecommendations();
-        $high = 0;
-        $medium = 0;
-        $low = 0;
-
-        foreach ($recommendations as $rec) {
-            switch ($rec->getPriority()) {
-                case Recommendation::PRIORITY_HIGH:
-                    $high++;
-                    break;
-                case Recommendation::PRIORITY_MEDIUM:
-                    $medium++;
-                    break;
-                case Recommendation::PRIORITY_LOW:
-                    $low++;
-                    break;
-            }
-        }
-
-        $total = $high + $medium + $low;
-        $score = $this->calculatePerformanceScore($high, $medium, $low);
+        // Same weighted model as HTML reports, baselines and MCP (configurable via .m2perf.json)
+        $score = $this->runner->computeScore($this->lastRecommendations);
+        $counts = $score['counts'];
 
         $summary = [
-            sprintf('Performance Score: %s', $this->formatPerformanceScore($score)),
-            sprintf('Total Issues: %d', $total),
-            sprintf('🔴 <error>High: %d</error>', $high),
-            sprintf('🟡 <comment>Medium: %d</comment>', $medium),
-            sprintf('🟢 <info>Low: %d</info>', $low)
+            sprintf('Performance Score: %s', $this->formatPerformanceScore($score['score'], $score['grade'])),
+            sprintf('Total Issues: %d', $counts['high'] + $counts['medium'] + $counts['low']),
+            sprintf('🔴 <error>High: %d</error>', $counts['high']),
+            sprintf('🟡 <comment>Medium: %d</comment>', $counts['medium']),
+            sprintf('🟢 <info>Low: %d</info>', $counts['low'])
         ];
 
         // Add mode information
@@ -966,7 +811,11 @@ ROW;
     {
         $info = [];
 
-        $info[] = sprintf('Analyzers: %d/%d Executed', $this->executedAnalyzers, count($this->allAvailableAnalyzers));
+        $info[] = sprintf(
+            'Analyzers: %d/%d Executed',
+            $this->executedAnalyzers,
+            count($this->runner->getAvailableAnalyzerNames())
+        );
         $info[] = sprintf('Total Time: %s', $this->formatExecutionTime($this->totalExecutionTime));
 
         if (!empty($this->analyzerTimings)) {
@@ -987,56 +836,17 @@ ROW;
         return $info;
     }
 
-    private function calculatePerformanceScore(int $high, int $medium, int $low): float
+    private function formatPerformanceScore(float $score, string $grade): string
     {
-        // Performance score algorithm (0-100 scale)
-        // Base score starts at 100, deduct points for issues
-        $baseScore = 100.0;
-
-        // Weights for different priority issues
-        $highWeight = 8.0;    // High priority issues are very bad
-        $mediumWeight = 3.0;  // Medium priority issues are moderate
-        $lowWeight = 0.5;     // Low priority issues are minor
-
-        // Calculate deductions
-        $deductions = ($high * $highWeight) + ($medium * $mediumWeight) + ($low * $lowWeight);
-
-        // Apply exponential decay for many issues
-        if ($deductions > 20) {
-            $deductions = 20 + (($deductions - 20) * 1.5);
-        }
-
-        $score = max(0, $baseScore - $deductions);
-
-        // Bonus for perfect execution
-        if ($high === 0 && $medium === 0 && $low === 0) {
-            $score = 100.0;
-        }
-
-        return round($score, 1);
-    }
-
-    private function formatPerformanceScore(float $score): string
-    {
-        $grade = match(true) {
-            $score >= 95 => ['A+', 'info'],
-            $score >= 90 => ['A', 'info'],
-            $score >= 85 => ['A-', 'info'],
-            $score >= 80 => ['B+', 'comment'],
-            $score >= 75 => ['B', 'comment'],
-            $score >= 70 => ['B-', 'comment'],
-            $score >= 65 => ['C+', 'comment'],
-            $score >= 60 => ['C', 'comment'],
-            $score >= 55 => ['C-', 'error'],
-            $score >= 50 => ['D+', 'error'],
-            $score >= 45 => ['D', 'error'],
-            default => ['F', 'error']
+        $style = match (true) {
+            $score >= 90 => 'info',
+            $score >= 60 => 'comment',
+            default => 'error'
         };
 
-        return sprintf('<%s>%.1f/100 (%s)</%s>', $grade[1], $score, $grade[0], $grade[1]);
+        return sprintf('<%s>%.1f/100 (%s)</%s>', $style, $score, $grade, $style);
     }
 
-    // Utility methods
     private function getAnalyzerName(string $key): string
     {
         return ucfirst(str_replace(['-', '_'], '', $key));
@@ -1133,29 +943,27 @@ LOGO;
         $output->writeln($logo);
     }
 
-    private function checkAndNotifyUpdates(OutputInterface $output): void
+    private function checkAndNotifyUpdates(InputInterface $input, OutputInterface $output): void
     {
         // Only check if running from PHAR
         if (!\Phar::running()) {
             return;
         }
-        
-        // Check if update notification file exists
-        $notificationFile = sys_get_temp_dir() . '/.m2-performance-update-available';
-        if (file_exists($notificationFile)) {
-            $updateInfo = json_decode(file_get_contents($notificationFile), true);
-            if ($updateInfo && isset($updateInfo['version']) && isset($updateInfo['checked'])) {
-                // Only show if checked within last 24 hours
-                if (time() - $updateInfo['checked'] < 86400) {
-                    $output->writeln('');
-                    $output->writeln('<bg=yellow;fg=black> ⚡ Update Available ⚡ </>');
-                    $output->writeln(sprintf(
-                        '<comment>A new version (%s) is available. Run <info>self-update</info> to upgrade.</comment>',
-                        $updateInfo['version']
-                    ));
-                    $output->writeln('');
-                }
-            }
+
+        // Network check only for humans at a terminal: never in CI, pipes or -n runs
+        if ($input->isInteractive() === true) {
+            UpdateChecker::checkIfDue();
+        }
+
+        $updateInfo = UpdateChecker::getUpdateInfo();
+        if ($updateInfo !== null && version_compare((string)$updateInfo['version'], ToolVersion::VERSION, '>') === true) {
+            $output->writeln('');
+            $output->writeln('<bg=yellow;fg=black> ⚡ Update Available ⚡ </>');
+            $output->writeln(sprintf(
+                '<comment>A new version (%s) is available. Run <info>self-update</info> to upgrade.</comment>',
+                $updateInfo['version']
+            ));
+            $output->writeln('');
         }
     }
 
@@ -1181,5 +989,35 @@ LOGO;
         $debugInfo .= "\nConfig sources checked: Database → config.php → env.php → Environment Variables";
         
         return $debugInfo;
+    }
+
+    private function compareToBaseline(string $baselineName, string $profile, OutputInterface $output): void
+    {
+        $manager = new BaselineManager($this->magentoRoot);
+        $comparison = $manager->compare(
+            $baselineName,
+            $this->runner->toArray($this->lastRecommendations),
+            $this->runner->computeScore($this->lastRecommendations),
+            $profile,
+            $this->runner->getAnalysisMode()
+        );
+
+        if (isset($comparison['error']) === true) {
+            $output->writeln('<error>' . $comparison['error'] . '</error>');
+            return;
+        }
+
+        $output->writeln('');
+        $output->writeln('<info>=== Baseline Comparison: ' . $baselineName . ' ===</info>');
+        $output->writeln($comparison['summary']);
+        if (isset($comparison['warning']) === true) {
+            $output->writeln('<comment>' . $comparison['warning'] . '</comment>');
+        }
+        if ($comparison['is_regression'] === true) {
+            $output->writeln('<error>Status: REGRESSION detected</error>');
+        } else {
+            $output->writeln('<info>Status: OK (no regression)</info>');
+        }
+        $output->writeln('');
     }
 }

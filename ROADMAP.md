@@ -1,231 +1,129 @@
 # Magento 2 Performance Review Tool - Roadmap
 
-## Current Status: v1.0.3 (Released)
-**Grade: A- (88/100)** - Production-ready with intelligent CDN detection and enhanced caching analysis
+## Current Status: v1.0.4
+Feature release: MCP server, baselines & regression gates, SARIF export, interactive HTML report,
+`.m2perf.json` configuration, StaticCodeAnalyzer, Hyvä / Fastly / Valkey / Adobe Commerce Cloud awareness,
+plus a full validation pass of every command in Developer and Production mode.
 
 ---
 
-## v2.1 - Stability & Customization (Q2-Q3 2025)
-**Target Grade: A (90/100)**
+## Potential Roadmap Flow
 
-### 🚨 **Priority 1: Error Handling & Recovery**
-- **Graceful Degradation**: Tool continues analysis even when individual services fail
-- **Enhanced Error Messages**: Clear, actionable error descriptions with resolution steps
-- **Continue-on-Error Flag**: `--continue-on-error` option for CI/CD environments
-- **Service Health Checks**: Pre-flight checks for Redis, MySQL, Elasticsearch availability
-- **Fallback Mechanisms**: Alternative analysis paths when primary methods fail
+Phases are ordered by dependency, not by calendar. Each phase ends with a **gate**: continue, pivot or kill
+the remaining scope based on evidence (usage signal, false-positive rate, maintenance cost).
 
-**Implementation:**
-```bash
-# New command options
-./m2-performance.phar review --continue-on-error
-./m2-performance.phar review --pre-flight-check
-./m2-performance.phar health-check --services=redis,mysql,elasticsearch
+```
+Phase 0  Release hygiene & trust      ->  v1.0.5
+Phase 1  Signal quality               ->  v1.1
+Phase 2  Execution & runtime          ->  v1.2
+Phase 3  Ecosystem & AI integration   ->  v2.0
 ```
 
-### ⚙️ **Priority 2: Configuration File Support**
-- **Custom Scoring Weights**: Adjustable penalty values for different issue types
-- **Analyzer Configuration**: Enable/disable specific analyzers
-- **Custom Thresholds**: Environment-specific performance thresholds
-- **Profile Customization**: User-defined analysis profiles beyond basic/full/security
+### Phase 0 - Release Hygiene & Trust (v1.0.5) - prerequisite for everything else
+Without automated builds and tests every analyzer change risks silent regressions (the 1.0.4 validation
+pass found 20+ defects that only manual end-to-end runs revealed).
 
-**Implementation:**
-```json
-// config.json
-{
-  "scoring": {
-    "high_weight": 10.0,
-    "medium_weight": 4.0,
-    "low_weight": 1.0,
-    "exponential_threshold": 15
-  },
-  "analyzers": {
-    "disabled": ["uptime", "api-security"],
-    "redis": {
-      "check_persistence": false,
-      "memory_threshold": 85
-    }
-  },
-  "profiles": {
-    "production": ["config", "cache", "database", "security"],
-    "staging": ["config", "cache", "modules"]
-  }
-}
-```
+- **CI pipeline (GitHub Actions)**: lint, PHPStan, PHPUnit, PHAR build on every PR
+- **Release automation**: attach `m2-performance.phar` + `m2-performance.phar.sha256` as release assets
+  (self-update already prefers release assets and verifies SHA-256)
+- **Unit test suite**: AnalysisRunner, BaselineManager, StoreContext, EnhancedConfigLoader precedence,
+  fix-script generators (bash `-n` + shellcheck on generated output)
+- **Fixture Magento roots**: Luma/on-prem, Hyvä + Fastly, Adobe Commerce Cloud (L2 cache), Valkey 2.4.8
+- **End-to-end smoke matrix**: every command x Developer/Production mode (the 1.0.4 manual matrix, automated)
+- **Cleanup**: retire remaining legacy paths (static HTML generator in `generate`, duplicated update-check logic)
 
-### 💡 **Priority 3: Interactive Help System**
-- **Issue Explanation**: Detailed guidance for each recommendation
-- **Quick Fix Suggestions**: Common resolution steps with commands
-- **Impact Assessment**: Before/after performance impact estimates
+**Gate:** CI green on all fixture stacks; zero known false positives on the "clean" fixture.
 
-**Implementation:**
-```bash
-./m2-performance.phar explain --issue=redis-session-locking
-./m2-performance.phar quick-fix --issue-id=123
-./m2-performance.phar estimate --fix=enable-opcache
-```
+### Phase 1 - Signal Quality (v1.1)
+Make every finding trustworthy and every score meaningful.
+
+- **Informational tier**: positive detections ("Fastly detected", "Hyvä detected") stop counting as issues,
+  stop landing in fix scripts and SARIF
+- **Score v2 (non-saturating)**: per-area capped penalties so large estates do not flatten at 0 / F;
+  keeps trend value for baselines
+- **Stable rule IDs** per finding (baselines keyed by rule ID instead of area + title)
+- **SARIF locations**: real file/line anchors only (module-name "files" and config findings mapped to
+  `app/etc/config.php` / `env.php` regions instead of placeholder URIs)
+- **Fix scripts**: locate the loaded OPcache ini via `php --ini` instead of Debian `/etc/php/<ver>` paths
+- **`review --fail-below=<score>`** exit code (today the gate lives in `baseline --fail-on-regression`)
+- **Multiple export formats per run** (`--export=json,html,sarif`), input validation for `--priority`
+- **Terminal UX**: wrapped table columns, compact mode for CI logs
+- **False-positive sweep** across analyzers using the Phase 0 fixtures (e.g. config precedence,
+  multi-website base URLs, Cloud-managed settings)
+
+**Gate:** fewer than 5% findings dismissed as false positives in real-store runs; otherwise pivot to
+fixing detection before adding new analyzers.
+
+### Phase 2 - Execution & Runtime (v1.2)
+- **Real parallel execution** for `--async` (isolated worker processes per analyzer; no `pcntl_fork`
+  inside the PHAR - shared file descriptors corrupt archive reads)
+- **Monitoring dashboard decision**: bundle ReactPHP into the PHAR or retire `monitor` in favour of
+  `cache:monitor` + exports (kill/pivot gate on usage)
+- **Benchmark realism**: URL discovery from sitemap / category tree instead of sample-data paths,
+  authenticated REST scenario (integration token), percentile reporting
+- **Synthetic load testing integration (k6)**: crawler-driven scenarios with results fed into the report
+- **Machine-readable `cache:monitor`** output for dashboards
+
+**Gate:** benchmark and load-test numbers reproducible within +/-10% across runs on the same stack.
+
+### Phase 3 - Ecosystem & AI Integration (v2.0)
+- **MCP expansion**: resources (latest report, baselines), prompts (guided remediation),
+  fix-suggestion tool with write-guarded apply
+- **APM correlation**: map findings to real transaction cost (New Relic / Datadog) to rank by impact
+- **Plugin architecture** for custom analyzers and fix generators
+- **Official Docker image** (ghcr.io) with `pdo_mysql`, `redis`, `opcache`
+- **Cloud-provider checks**: AWS (ElastiCache, RDS, CloudFront), GCP, Azure, Kubernetes
+
+**Gate:** external adoption signal (CI integrations, MCP installs, community analyzers) before investing
+in a REST API / SaaS surface.
 
 ---
 
-## v2.2 - Analytics & Integration (Q3 2025)
-**Target Grade: A+ (92/100)**
+## Backlog - Exploratory (unscheduled)
 
-### 📊 **Historical Tracking & Trends**
-- **Baseline Management**: Save and compare performance baselines
-- **Trend Analysis**: Track improvements/degradations over time
-- **Performance Metrics Export**: Integration with monitoring tools
-- **Regression Detection**: Alert when performance scores decrease
-
-**Implementation:**
-```bash
-# Baseline management
-./m2-performance.phar baseline --save=production-v2.4.6
-./m2-performance.phar baseline --list
-./m2-performance.phar review --compare-to=production-v2.4.6
-
-# Trend analysis
-./m2-performance.phar trend --days=30 --format=chart
-./m2-performance.phar trend --export=metrics.json
-```
-
-### 🔄 **CI/CD Integration**
-- **Pipeline-Friendly Output**: JUnit XML, exit codes, structured logging
-- **Quality Gates**: Fail builds below specified performance scores
-- **Webhook Notifications**: Slack, Teams, Discord integration
-- **Automated Reporting**: Schedule regular performance audits
-
-**Implementation:**
-```bash
-# CI/CD integration
-./m2-performance.phar review --format=junit --output=test-results.xml
-./m2-performance.phar review --fail-below=75 --webhook=https://hooks.slack.com/...
-./m2-performance.phar schedule --daily --email=team@company.com
-```
-
-### 🎓 **Interactive Setup Wizard**
-- **Guided Configuration**: Step-by-step setup for new users
-- **Environment Detection**: Automatically detect hosting environment
-- **Best Practice Recommendations**: Suggest optimal settings based on setup
-- **Quick Start Templates**: Pre-configured settings for common scenarios
-
-**Implementation:**
-```bash
-./m2-performance.phar setup --interactive
-./m2-performance.phar detect --environment
-./m2-performance.phar template --hosting=aws-ec2
-```
+- **Security compliance packs**: PCI DSS, GDPR, custom rule sets
+- **Advanced analytics**: anomaly detection, capacity planning, cost optimization
+- **Static analysis bridges**: PHPStan / Psalm rule packs for Magento performance anti-patterns
+- **Git hooks** for pre-merge performance regression checks
+- **Interactive help**: `explain --issue=<rule-id>` with impact estimates
 
 ---
 
-## v2.3 - Advanced Analysis (Q4 2025)
-**Target Grade: A+ (95/100)**
+## Completed Features
 
-### 🚀 **Enhanced Performance Testing**
-- **Load Testing Integration**: Apache Bench, k6, JMeter compatibility
-- **Real User Monitoring**: Integration with New Relic, DataDog, AppDynamics
-- **User Journey Analysis**: Critical path performance testing
-- **Synthetic Monitoring**: Automated performance checks
+### v1.0.4
+✅ **MCP server** for AI coding agents (7 tools over stdio)
+✅ **Baselines & regression detection** with CI gates and mode/profile mismatch warnings
+✅ **SARIF 2.1.0 export** and **interactive HTML report**
+✅ **Configuration file** (`.m2perf.json`): disabled analyzers, custom profiles, scoring weights, min score
+✅ **Continue-on-error** execution (graceful degradation per analyzer)
+✅ **StaticCodeAnalyzer** (N+1, cache writes without TTL, index-bypassing type mismatches)
+✅ **Context awareness**: Hyvä, Fastly, Valkey, Adobe Commerce Cloud L2 cache, Magento config precedence
+✅ **Unified scoring** across CLI, HTML, baselines and MCP
+✅ **Safe self-update** (SHA-256 verification, no background fork)
 
-**Implementation:**
-```bash
-./m2-performance.phar load-test --users=100 --duration=5m
-./m2-performance.phar monitor --apm=newrelic --api-key=xyz
-./m2-performance.phar journey --test=checkout-flow
-```
-
-### ☁️ **Cloud Provider Optimization**
-- **AWS-Specific Analysis**: ElastiCache, RDS, CloudFront recommendations
-- **Google Cloud Integration**: Cloud SQL, Memorystore, CDN optimization
-- **Azure Optimization**: Azure Cache, SQL Database, Front Door analysis
-- **Container Analysis**: Docker, Kubernetes performance recommendations
-
-**Implementation:**
-```bash
-./m2-performance.phar cloud --provider=aws --region=us-east-1
-./m2-performance.phar docker --analyze-containers
-./m2-performance.phar k8s --namespace=magento
-```
-
-### 🛡️ **Security Compliance**
-- **PCI DSS Compliance**: Payment processing security checks
-- **GDPR Compliance**: Data protection and privacy analysis
-- **SOX Compliance**: Financial reporting controls verification
-- **Custom Compliance**: User-defined security frameworks
-
-**Implementation:**
-```bash
-./m2-performance.phar compliance --framework=pci-dss
-./m2-performance.phar privacy --gdpr-check
-./m2-performance.phar security --custom-rules=company-policy.json
-```
-
----
-
-## v3.0 - Ecosystem Integration (Q1 2026)
-**Target Grade: A+ (98/100)**
-
-### 🔌 **API & Plugin System**
-- **REST API**: Programmatic access to all tool functionality
-- **Plugin Architecture**: Third-party extensions and custom analyzers
-- **Webhook Integration**: Real-time notifications and integrations
-- **GraphQL Interface**: Flexible data querying for dashboards
-
-**Implementation:**
-```bash
-# API server
-./m2-performance.phar serve --api --port=8080
-
-# Plugin management
-./m2-performance.phar plugin --install=vendor/custom-analyzer
-./m2-performance.phar plugin --list
-```
-
-### 📈 **Advanced Analytics**
-- **Machine Learning Insights**: Predictive performance analysis
-- **Anomaly Detection**: Automatic identification of unusual patterns
-- **Capacity Planning**: Growth projections and scaling recommendations
-- **Cost Optimization**: Cloud cost analysis and optimization suggestions
-
-### 🔗 **Tool Integration**
-- **Static Analysis**: Integration with PHPStan, Psalm, PHP_CodeSniffer
-- **APM Integration**: Deep integration with application performance monitoring
-- **Version Control**: Git hooks for performance regression detection
-- **Documentation**: Auto-generated performance documentation
-
----
-
-## Completed Features (v1.0.3)
-
-✅ **Enhanced CDN Detection**
-- Multi-method Fastly detection (composer, env.php, headers, modules)
-- Intelligent caching recommendations based on infrastructure
-- Context-aware fix script generation
-
-✅ **Improved Configuration Loading**
-- EnhancedConfigLoader for better reliability
-- Proper configuration precedence handling
-- Fallback mechanisms for missing configs
+### v1.0.3
+✅ **Enhanced CDN Detection** - multi-method Fastly detection, CDN-aware recommendations
+✅ **Improved Configuration Loading** - EnhancedConfigLoader with fallback mechanisms
 
 ---
 
 ## Community & Ecosystem Goals
 
-### **Short Term (v2.1-v2.2)**
-- [ ] Community plugin marketplace
+### **Short Term (v1.1)**
 - [ ] Contribution guidelines and developer documentation
 - [ ] Integration with popular Magento agencies and hosting providers
 - [ ] Performance optimization training materials
 
-### **Medium Term (v2.3)**
+### **Medium Term (v1.2)**
 - [ ] Magento Marketplace listing
 - [ ] Conference presentations and workshops
 - [ ] Case studies and success stories
 - [ ] Partner program with hosting providers
 
-### **Long Term (v3.0+)**
-- [ ] SaaS offering for enterprise customers
-- [ ] Mobile app for on-the-go monitoring
-- [ ] Integration with Adobe Commerce Cloud
+### **Long Term (v2.0+)**
+- [ ] Community plugin marketplace
+- [ ] Deeper Adobe Commerce Cloud integration
 - [ ] Certification program for Magento performance optimization
 
 ---
@@ -233,40 +131,36 @@
 ## Technical Debt & Maintenance
 
 ### **Ongoing Priorities**
-- **Code Quality**: Maintain PSR-12 standards, 90%+ test coverage
-- **Documentation**: Keep README, API docs, and examples current
-- **Performance**: Tool execution time should remain under 5 seconds for full analysis
-- **Compatibility**: Support for PHP 8.0+ and Magento 2.4.x+ versions
-- **Security**: Regular dependency updates and security audits
+- **Code Quality**: PSR-12, PHPStan, growing unit test coverage (Phase 0)
+- **Documentation**: Keep README, examples and CHANGELOG current with every release
+- **Performance**: Full analysis should stay under 5 seconds on a 150k-file codebase
+- **Compatibility**: PHP 8.1+ and Magento 2.4.x
+- **Security**: Regular dependency updates, checksummed releases
 
 ### **Breaking Changes Policy**
-- Major version changes (v3.x) may include breaking changes with 6-month deprecation notice
-- Minor versions (v2.x) maintain backward compatibility
-- Configuration file format changes include automatic migration tools
+- Major versions (v2.x) may include breaking changes with a deprecation notice in the prior minor release
+- Minor and patch versions (v1.x) maintain backward compatibility
+- Configuration file format changes include migration notes
 
 ---
 
 ## Success Metrics
 
-### **v2.1 Goals**
+### **v1.0.5 Goals**
+- CI pipeline green on every merge; releases ship PHAR + checksum assets
 - Zero critical error reports from production usage
-- 50% reduction in user-reported configuration issues
-- Support for 95% of standard Magento installations
 
-### **v2.2 Goals**
-- 500+ active CI/CD integrations
-- 80% user satisfaction score
-- 25% improvement in issue resolution time
+### **v1.1 Goals**
+- Less than 5% false-positive rate on real-store runs
+- Score v2 adopted by baselines without breaking existing comparisons
 
-### **v2.3 Goals**
-- Integration with 3+ major cloud providers
-- 90% automated test coverage
-- Enterprise adoption by 10+ major retailers
+### **v1.2 Goals**
+- Parallel execution at least 2x faster on the full profile
+- Reproducible benchmark / load-test results
 
-### **v3.0 Goals**
-- 1000+ plugin downloads
-- API usage by 100+ third-party tools
-- Recognition as industry standard for Magento performance analysis
+### **v2.0 Goals**
+- Measurable MCP and CI/CD adoption
+- First community-contributed analyzers
 
 ---
 
@@ -280,7 +174,7 @@ We welcome contributions! Priority areas for community involvement:
 4. **Documentation**: Tutorials, best practices, and case studies
 5. **Testing**: Real-world testing across different environments
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+Open an issue or pull request on GitHub.
 
 ---
 

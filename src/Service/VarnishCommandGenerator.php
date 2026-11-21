@@ -57,7 +57,7 @@ class VarnishCommandGenerator extends BaseScriptGenerator
             $title = $rec->getTitle();
             $details = $rec->getDetails();
             
-            $script .= "echo \"📋 {$title}\"\n";
+            $script .= $this->echoLine('📋 ' . $title);
             $script .= "echo \"" . str_repeat('-', strlen($title) + 5) . "\"\n";
             
             if (stripos($title, 'vcl') !== false) {

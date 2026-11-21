@@ -27,6 +27,10 @@ if (file_exists($pharFile)) {
 fwrite(STDOUT, "Checking source files...\n");
 $problematicFiles = [];
 $sourceFiles = [
+    'src/ToolVersion.php',
+    'src/Command/McpServerCommand.php',
+    'src/Command/BaselineCommand.php',
+    'src/Service/AnalysisRunner.php',
     'src/Command/MonitorCommand.php',
     'src/Command/CacheMonitorCommand.php',
     'src/Command/SelfUpdateCommand.php',
@@ -133,6 +137,13 @@ __HALT_COMPILER();
 STUB;
     
     $phar->setStub($stub);
+
+    // Shown by --version ("built: ..."); ToolVersion stays the single version source
+    require_once __DIR__ . '/src/ToolVersion.php';
+    $phar->setMetadata([
+        'version' => \M2Performance\ToolVersion::VERSION,
+        'build_date' => gmdate('Y-m-d H:i:s') . ' UTC',
+    ]);
     
     // Stop buffering WITHOUT compression first
     $phar->stopBuffering();
@@ -178,6 +189,11 @@ STUB;
         
         $size = round(filesize($pharFile) / 1024 / 1024, 2);
         fwrite(STDOUT, "\n✅ PHAR created successfully: $pharFile ({$size} MB)\n");
+
+        // Checksum consumed by self-update (release asset or raw tagged file)
+        $checksumFile = $pharFile . '.sha256';
+        file_put_contents($checksumFile, hash_file('sha256', $pharFile) . "  m2-performance.phar\n");
+        fwrite(STDOUT, "✅ SHA-256 written: $checksumFile\n");
         
         // Test execution
         fwrite(STDOUT, "\nTesting PHAR execution...\n");

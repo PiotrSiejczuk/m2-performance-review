@@ -64,8 +64,11 @@ class OpCacheAnalyzer implements AnalyzerInterface
         'opcache.jit_buffer_size'               => '0'
     ];
 
-    public function __construct(RecommendationCollector $collector)
+    private ?string $magentoRoot = null;
+
+    public function __construct(RecommendationCollector $collector, ?string $magentoRoot = null)
     {
+        $this->magentoRoot = $magentoRoot;
         $this->collector = $collector;
     }
 
@@ -202,6 +205,23 @@ class OpCacheAnalyzer implements AnalyzerInterface
         }
     }
 
+    /** Hash-table sizes OPcache actually uses for opcache.max_accelerated_files (php-src ZendAccelerator). */
+    private const OPCACHE_KEY_PRIMES = [223, 463, 983, 1979, 3907, 7963, 16229, 32531, 65407, 130987, 262237, 524521, 1048793];
+
+    /**
+     * Smallest effective value covering $phpFileCount (PHP caps the setting at 1,000,000).
+     */
+    public static function recommendedMaxAcceleratedFiles(int $phpFileCount): int
+    {
+        foreach (self::OPCACHE_KEY_PRIMES as $prime) {
+            if ($prime >= $phpFileCount) {
+                return min($prime, 1000000);
+            }
+        }
+
+        return 1000000;
+    }
+
     // Other methods remain the same...
     private function checkMaxAcceleratedFiles(array $directives): void
     {
@@ -211,16 +231,19 @@ class OpCacheAnalyzer implements AnalyzerInterface
         if ($maxFiles > 0 && $maxFiles < 100000) {
             $phpCount = $this->getPhpFileCountFast();
             if ($phpCount && $phpCount > $maxFiles) {
-                $this->collector->add(
+                $recommended = self::recommendedMaxAcceleratedFiles($phpCount);
+                $this->collector->addWithMetadata(
                     'opcache',
                     'Adjust opcache.max_accelerated_files',
                     Recommendation::PRIORITY_HIGH,
                     "Detected approximately {$phpCount} PHP files but opcache.max_accelerated_files is set to {$maxFiles}. " .
-                    "Consider increasing it to at least " . $phpCount . " or set to 0 for automatic.\n" .
-                    "Command: echo 'opcache.max_accelerated_files=0' >> /etc/php/*/fpm/conf.d/10-opcache.ini",
+                    "Increase it to at least {$recommended}.\n" .
+                    "Command: echo 'opcache.max_accelerated_files={$recommended}' >> /etc/php/*/fpm/conf.d/10-opcache.ini",
                     'When max_accelerated_files is too low, OPcache stops caching new files silently. This causes random performance degradation. ' .
-                    'Setting to 0 enables automatic sizing based on available memory. Prime numbers near your file count also work well: ' .
-                    '65407, 100003, 200003. Magento typically has 50,000-150,000 PHP files including vendor directory.'
+                    'PHP rounds the value up to the next prime of its internal table (' . implode(', ', self::OPCACHE_KEY_PRIMES) . '). ' .
+                    'Note: 0 is NOT automatic sizing - it is clamped to the 200-file minimum. ' .
+                    'Magento typically has 50,000-150,000 PHP files including vendor directory.',
+                    ['recommended_value' => $recommended]
                 );
             }
         }
@@ -230,7 +253,13 @@ class OpCacheAnalyzer implements AnalyzerInterface
     {
         // Use find command for faster counting
         $output = [];
-        exec('find . -name "*.php" -type f | wc -l 2>/dev/null', $output, $returnCode);
+        $searchRoot = $this->magentoRoot !== null ? $this->magentoRoot : getcwd();
+        $result = \M2Performance\Service\SafeExec::run(
+            'find ' . escapeshellarg((string)$searchRoot) . ' -name "*.php" -type f | wc -l',
+            15
+        );
+        $output = $result['output'];
+        $returnCode = $result['exit_code'];
 
         if ($returnCode === 0 && !empty($output[0])) {
             return (int)trim($output[0]);
@@ -329,7 +358,9 @@ class OpCacheAnalyzer implements AnalyzerInterface
 
         // Try to get all values at once using sysctl -a (faster than individual calls)
         $output = [];
-        exec('sysctl -a 2>/dev/null', $output, $returnCode);
+        $result = \M2Performance\Service\SafeExec::run('sysctl -a 2>/dev/null', 5);
+        $output = $result['output'];
+        $returnCode = $result['exit_code'];
 
         if ($returnCode === 0) {
             foreach ($output as $line) {

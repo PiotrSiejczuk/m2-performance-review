@@ -15,7 +15,7 @@ class SelfUpdateCommand extends Command
     
     private const GITHUB_API_URL = 'https://api.github.com/repos/PiotrSiejczuk/m2-performance-review/releases/latest';
     private const UPDATE_CHECK_FILE = '.m2-performance-update-check';
-    private const UPDATE_CHECK_INTERVAL = 86400; // 24 hours
+    private const RAW_TAG_URL = 'https://github.com/PiotrSiejczuk/m2-performance-review/raw/%s';
     
     protected function configure(): void
     {
@@ -43,14 +43,9 @@ class SelfUpdateCommand extends Command
             return Command::FAILURE;
         }
         
-        // Get current version from PHAR metadata
-        try {
-            $phar = new \Phar($pharPath);
-            $metadata = $phar->getMetadata();
-            $currentVersion = $metadata['version'] ?? 'unknown';
-        } catch (\Exception $e) {
-            $currentVersion = 'unknown';
-        }
+        // PHAR metadata is not a reliable version source (older builds shipped
+        // none, and 'unknown' compares lower than any release -> silent downgrade)
+        $currentVersion = \M2Performance\ToolVersion::VERSION;
         
         $output->writeln("Current version: <comment>{$currentVersion}</comment>");
         
@@ -196,19 +191,45 @@ class SelfUpdateCommand extends Command
         // Find PHAR asset
         $pharAsset = null;
         foreach ($data['assets'] ?? [] as $asset) {
-            if (strpos($asset['name'], '.phar') !== false) {
+            // str_ends_with: m2-performance.phar.sha256 must not be picked as the PHAR
+            if (str_ends_with((string)$asset['name'], '.phar') === true) {
                 $pharAsset = $asset;
                 break;
             }
         }
         
+        // Releases up to v1.0.3 publish the PHAR in the tagged tree only (no
+        // release asset). Fall back to the raw tagged file and its committed
+        // checksum so self-update keeps working for both release layouts.
         if (!$pharAsset) {
-            throw new \RuntimeException('No PHAR file found in latest release');
+            $rawBase = sprintf(self::RAW_TAG_URL, rawurlencode((string)$data['tag_name']));
+
+            return [
+                'version' => ltrim($data['tag_name'], 'v'),
+                'download_url' => $rawBase . '/m2-performance.phar',
+                'checksum_url' => $rawBase . '/m2-performance.phar.sha256',
+                'phar_asset_name' => 'm2-performance.phar',
+                'size' => 0,
+                'sha1' => $data['target_commitish'] ?? null,
+                'changelog' => $data['body'] ?? ''
+            ];
         }
-        
+
+        // Locate a SHA-256 checksum asset published alongside the PHAR
+        // (e.g. m2-performance.phar.sha256 or checksums.sha256)
+        $checksumAsset = null;
+        foreach ($data['assets'] ?? [] as $asset) {
+            if (str_ends_with($asset['name'], '.sha256') === true) {
+                $checksumAsset = $asset;
+                break;
+            }
+        }
+
         return [
             'version' => ltrim($data['tag_name'], 'v'),
             'download_url' => $pharAsset['browser_download_url'],
+            'checksum_url' => $checksumAsset !== null ? $checksumAsset['browser_download_url'] : null,
+            'phar_asset_name' => $pharAsset['name'],
             'size' => $pharAsset['size'],
             'sha1' => $data['target_commitish'] ?? null,
             'changelog' => $data['body'] ?? ''
@@ -289,7 +310,37 @@ class SelfUpdateCommand extends Command
     
     private function verifyDownload(string $file, array $release): bool
     {
-        // Basic verification - check if it's a valid PHAR
+        // Layer 1: size must match the release asset metadata exactly
+        $expectedSize = (int)($release['size'] ?? 0);
+        if ($expectedSize > 0 && filesize($file) !== $expectedSize) {
+            fwrite(STDERR, "\nSize mismatch: expected {$expectedSize}, got " . filesize($file) . "\n");
+            return false;
+        }
+
+        // Layer 2: SHA-256 against the published checksum asset.
+        // A checksum asset is REQUIRED for releases that ship one; absence
+        // is tolerated only for legacy releases (with a stderr warning).
+        $checksumUrl = $release['checksum_url'] ?? null;
+        if ($checksumUrl !== null) {
+            $expected = $this->fetchExpectedChecksum(
+                (string)$checksumUrl,
+                (string)($release['phar_asset_name'] ?? '')
+            );
+            if ($expected === null) {
+                fwrite(STDERR, "\nCould not retrieve published SHA-256 checksum. Update aborted.\n");
+                return false;
+            }
+
+            $actual = hash_file('sha256', $file);
+            if (hash_equals($expected, (string)$actual) === false) {
+                fwrite(STDERR, "\nSHA-256 mismatch!\n  expected: {$expected}\n  actual:   {$actual}\n");
+                return false;
+            }
+        } else {
+            fwrite(STDERR, "\nWarning: release publishes no SHA-256 checksum; falling back to structural verification only.\n");
+        }
+
+        // Layer 3: must be a loadable PHAR
         try {
             $phar = new \Phar($file);
             return true;
@@ -297,16 +348,84 @@ class SelfUpdateCommand extends Command
             return false;
         }
     }
+
+    /**
+     * Fetch and parse the published checksum file. Supports both a bare
+     * "<hash>" file and a "sha256sum" style "<hash>  <filename>" manifest
+     * with one or more entries.
+     */
+    private function fetchExpectedChecksum(string $url, string $pharAssetName): ?string
+    {
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'header' => ['User-Agent: m2-performance-review'],
+                'timeout' => 15,
+            ],
+        ]);
+
+        $body = @file_get_contents($url, false, $context);
+        if ($body === false || trim($body) === '') {
+            return null;
+        }
+
+        foreach (preg_split('/\r?\n/', trim($body)) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+
+            $parts = preg_split('/\s+/', $line, 2);
+            $hash = strtolower(trim((string)$parts[0]));
+
+            if (preg_match('/^[a-f0-9]{64}$/', $hash) !== 1) {
+                continue;
+            }
+
+            // Bare-hash file, or manifest line matching the PHAR asset name
+            if (count($parts) === 1) {
+                return $hash;
+            }
+
+            $filename = ltrim(trim((string)$parts[1]), '*');
+            if ($pharAssetName === '' || $filename === $pharAssetName || basename($filename) === $pharAssetName) {
+                return $hash;
+            }
+        }
+
+        return null;
+    }
     
     private function replaceFile(string $source, string $dest): bool
     {
-        // On Windows, we need to use rename
+        // On Windows rename() cannot overwrite: stage next to the target
+        // first so the running binary is never destroyed before its
+        // replacement is in place on the same filesystem.
         if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-            unlink($dest);
-            return rename($source, $dest);
+            $staged = $dest . '.new';
+            if (copy($source, $staged) === false) {
+                return false;
+            }
+
+            if (@rename($staged, $dest) === true) {
+                @unlink($source);
+                return true;
+            }
+
+            if (@unlink($dest) === false) {
+                @unlink($staged);
+                return false;
+            }
+
+            $renamed = rename($staged, $dest);
+            if ($renamed === true) {
+                @unlink($source);
+            }
+
+            return $renamed;
         }
-        
-        // On Unix, we can use rename atomically
+
+        // On Unix, rename over the destination is atomic
         return rename($source, $dest);
     }
     
@@ -337,17 +456,5 @@ class SelfUpdateCommand extends Command
     {
         $file = sys_get_temp_dir() . '/' . self::UPDATE_CHECK_FILE;
         file_put_contents($file, time());
-    }
-    
-    public static function shouldCheckForUpdates(): bool
-    {
-        $file = sys_get_temp_dir() . '/' . self::UPDATE_CHECK_FILE;
-        
-        if (!file_exists($file)) {
-            return true;
-        }
-        
-        $lastCheck = (int) file_get_contents($file);
-        return (time() - $lastCheck) > self::UPDATE_CHECK_INTERVAL;
     }
 }

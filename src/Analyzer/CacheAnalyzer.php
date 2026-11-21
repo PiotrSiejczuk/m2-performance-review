@@ -3,6 +3,7 @@
 namespace M2Performance\Analyzer;
 
 use M2Performance\Contract\AnalyzerInterface;
+use M2Performance\Service\EnhancedConfigLoader;
 use M2Performance\Helper\RecommendationCollector;
 use M2Performance\Model\Recommendation;
 use M2Performance\Trait\DevModeAwareTrait;

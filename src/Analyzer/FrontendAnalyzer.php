@@ -29,14 +29,23 @@ class FrontendAnalyzer implements AnalyzerInterface
 
     private function analyzeFrontend(): void
     {
+        $storeContext = \M2Performance\Service\StoreContext::forRoot($this->magentoRoot);
+        $isHyva = $storeContext->isHyva();
+
         // Check Theme Usage
         $this->analyzeThemeUsage();
 
-        // Modern Frontend Optimization Checks (Less Critical in Dev)
-        $this->analyzeModernOptimizations();
+        // Modern Frontend Optimization Checks (Less Critical in Dev).
+        // Hyva compiles assets through its own Tailwind/webpack pipeline, so
+        // Magento's minify/merge/bundle settings are irrelevant noise there.
+        if ($isHyva === false) {
+            $this->analyzeModernOptimizations();
+        }
 
-        // Check for Oroblematic Merging/Bundling with HTTP/2 Considerations
-        $this->analyzeBundlingConfiguration();
+        // Check for Problematic Merging/Bundling with HTTP/2 Considerations
+        if ($isHyva === false) {
+            $this->analyzeBundlingConfiguration();
+        }
 
         // Check for Varnish/Fastly (Production Focused)
         if (!$this->isInDeveloperMode()) {
@@ -52,8 +61,8 @@ class FrontendAnalyzer implements AnalyzerInterface
         // Detect Performance Focused Themes
         $this->analyzePerformanceThemes();
 
-        // Check for Optimal Bundle Sizes (Production Focused)
-        if (!$this->isInDeveloperMode()) {
+        // Check for Optimal Bundle Sizes (Production Focused; Luma bundles only)
+        if (!$this->isInDeveloperMode() && $isHyva === false) {
             $this->analyzeBundleSizes();
         }
 
@@ -273,6 +282,12 @@ class FrontendAnalyzer implements AnalyzerInterface
 
     private function analyzeCachingConfiguration(): void
     {
+        // Fastly present means edge FPC is already in place, regardless of the
+        // caching_application flag value visible to a static run.
+        if (\M2Performance\Service\StoreContext::forRoot($this->magentoRoot)->isFastly() === true) {
+            return;
+        }
+
         $cachingApp = $this->getConfigValue('system/full_page_cache/caching_application');
         if ($cachingApp !== '2') {
             $this->collector->add(

@@ -67,7 +67,7 @@ class FrontendCommandGenerator extends BaseScriptGenerator
         $title = $rec->getTitle();
         $details = $rec->getDetails();
         
-        $script .= "echo \"📋 {$title}\"\n";
+        $script .= $this->echoLine('📋 ' . $title);
         $script .= "echo \"" . str_repeat('-', strlen($title) + 5) . "\"\n";
         
         if (stripos($title, 'minif') !== false) {
@@ -232,15 +232,10 @@ class FrontendCommandGenerator extends BaseScriptGenerator
     {
         $script = "";
         
-        $script .= "# Generic frontend optimization\n";
-        $script .= "echo \"  → Applying general optimizations...\"\n";
-        $script .= "\n";
-        $script .= "# Clear static content\n";
-        $script .= "rm -rf pub/static/_cache/\n";
-        $script .= "rm -rf var/view_preprocessed/\n";
-        $script .= "echo \"    ✓ Cleared static content cache\"\n";
-        $script .= "\n";
-        $script .= "echo \"    → Manual review required for this optimization\"\n";
+        // No automated action: deleting pub/static/_cache and var/view_preprocessed
+        // for unrelated findings (N+1 queries, plugin counts...) fixed nothing and
+        // reported a misleading "✓"
+        $script .= "echo \"  → Manual review required for this optimization\"\n";
         $script .= "echo \"      See analysis report for specific details\"\n";
         
         return $script;

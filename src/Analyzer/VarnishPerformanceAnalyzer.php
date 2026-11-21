@@ -28,6 +28,22 @@ class VarnishPerformanceAnalyzer implements AnalyzerInterface
             return;
         }
 
+        // Fastly is a managed Varnish at the edge (default on Adobe Commerce
+        // Cloud): local Varnish configuration checks are irrelevant and
+        // contradict the Fastly finding from the cache analyzer.
+        $storeContext = \M2Performance\Service\StoreContext::forRoot($this->magentoRoot);
+        if ($storeContext->isFastly() === true) {
+            $this->collector->add(
+                'varnish',
+                'Varnish checks skipped - Fastly detected',
+                \M2Performance\Model\Recommendation::PRIORITY_LOW,
+                'Fastly provides managed Varnish at the CDN edge; local Varnish configuration findings do not apply. '
+                . 'Review caching behaviour via the Fastly module configuration and the Fastly dashboard instead.'
+            );
+
+            return;
+        }
+
         $this->analyzeVarnishConfiguration();
         $this->checkCacheBypassPatterns();
         $this->analyzeESIImplementation();

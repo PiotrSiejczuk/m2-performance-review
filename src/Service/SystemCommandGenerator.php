@@ -6,6 +6,24 @@ use M2Performance\Model\Recommendation;
 
 class SystemCommandGenerator extends BaseScriptGenerator
 {
+    /** Smallest OPcache hash size that covers a typical Magento 2 codebase. */
+    private const DEFAULT_MAX_ACCELERATED_FILES = 130987;
+
+    private int $opcacheMaxFiles = self::DEFAULT_MAX_ACCELERATED_FILES;
+
+    private bool $isOpcacheBlockEmitted = false;
+
+    private bool $isDeveloperMode;
+
+    /**
+     * @param bool $isDeveloperMode Magento runs in developer mode: never write
+     *                              validate_timestamps=0 (code changes would stop being picked up)
+     */
+    public function __construct(bool $isDeveloperMode = false)
+    {
+        $this->isDeveloperMode = $isDeveloperMode;
+    }
+
     public function generate(array $recommendations): ?string
     {
         $systemRecommendations = array_filter($recommendations, function($rec) {
@@ -43,6 +61,15 @@ class SystemCommandGenerator extends BaseScriptGenerator
         $script .= "    exit 1\n";
         $script .= "fi\n\n";
         
+        $this->isOpcacheBlockEmitted = false;
+        $this->opcacheMaxFiles = self::DEFAULT_MAX_ACCELERATED_FILES;
+        foreach ($recommendations as $rec) {
+            $recommended = (int)($rec->getMetadata()['recommended_value'] ?? 0);
+            if ($rec->getArea() === 'opcache' && $recommended > $this->opcacheMaxFiles) {
+                $this->opcacheMaxFiles = $recommended;
+            }
+        }
+
         foreach ($recommendations as $rec) {
             $script .= $this->generateSystemCommands($rec);
         }
@@ -63,10 +90,18 @@ class SystemCommandGenerator extends BaseScriptGenerator
         $title = $rec->getTitle();
         $details = $rec->getDetails();
         
-        $script .= "echo \"📋 {$title}\"\n";
+        $script .= $this->echoLine('📋 ' . $title);
         $script .= "echo \"" . str_repeat('-', strlen($title) + 5) . "\"\n";
         
-        if (stripos($title, 'opcache') !== false) {
+        if (stripos($title, 'opcache') !== false && stripos($title, 'development') !== false) {
+            // Production ini values (validate_timestamps=0) would stop code changes
+            // from being picked up on a developer machine
+            $script .= "echo \"  → Development OPcache tuning - apply manually (keep validate_timestamps=1)\"\n";
+            $script .= "echo \"    See analysis report for details\"\n";
+        } elseif (stripos($title, 'opcache') !== false && $this->isOpcacheBlockEmitted === true) {
+            $script .= "echo \"  → Covered by the OPcache settings applied above\"\n";
+        } elseif (stripos($title, 'opcache') !== false) {
+            $this->isOpcacheBlockEmitted = true;
             $script .= $this->generateOpcacheCommands($rec);
         } elseif (stripos($title, 'nginx') !== false) {
             $script .= $this->generateNginxCommands($rec);
@@ -109,8 +144,11 @@ class SystemCommandGenerator extends BaseScriptGenerator
         $script .= "; Performance optimizations\n";
         $script .= "opcache.memory_consumption=1024\n";
         $script .= "opcache.interned_strings_buffer=64\n";
-        $script .= "opcache.max_accelerated_files=0\n";
-        $script .= "opcache.validate_timestamps=0\n";
+        // 0 is not "automatic": PHP clamps it to the 200-file minimum
+        $script .= "opcache.max_accelerated_files={$this->opcacheMaxFiles}\n";
+        if ($this->isDeveloperMode === false) {
+            $script .= "opcache.validate_timestamps=0\n";
+        }
         $script .= "opcache.save_comments=1\n";
         $script .= "opcache.enable_file_override=0\n";
         $script .= "EOF\n";
@@ -130,8 +168,8 @@ class SystemCommandGenerator extends BaseScriptGenerator
         $script .= "echo \"  → Checking Nginx configuration...\"\n";
         $script .= "\n";
         $script .= "if command -v nginx >/dev/null 2>&1; then\n";
-        $script .= "    nginx -t\n";
-        $script .= "    if [ \$? -eq 0 ]; then\n";
+        // "cmd; if [ $? ... ]" never reaches the else branch under set -e
+        $script .= "    if nginx -t; then\n";
         $script .= "        echo \"    ✓ Nginx configuration is valid\"\n";
         $script .= "    else\n";
         $script .= "        echo \"    ❌ Nginx configuration has errors\"\n";
@@ -151,15 +189,13 @@ class SystemCommandGenerator extends BaseScriptGenerator
         $script .= "echo \"  → Checking Apache configuration...\"\n";
         $script .= "\n";
         $script .= "if command -v apache2ctl >/dev/null 2>&1; then\n";
-        $script .= "    apache2ctl configtest\n";
-        $script .= "    if [ \$? -eq 0 ]; then\n";
+        $script .= "    if apache2ctl configtest; then\n";
         $script .= "        echo \"    ✓ Apache configuration is valid\"\n";
         $script .= "    else\n";
         $script .= "        echo \"    ❌ Apache configuration has errors\"\n";
         $script .= "    fi\n";
         $script .= "elif command -v httpd >/dev/null 2>&1; then\n";
-        $script .= "    httpd -t\n";
-        $script .= "    if [ \$? -eq 0 ]; then\n";
+        $script .= "    if httpd -t; then\n";
         $script .= "        echo \"    ✓ Apache configuration is valid\"\n";
         $script .= "    else\n";
         $script .= "        echo \"    ❌ Apache configuration has errors\"\n";

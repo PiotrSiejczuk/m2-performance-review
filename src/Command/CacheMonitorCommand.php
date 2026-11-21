@@ -4,6 +4,7 @@ namespace M2Performance\Command;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use M2Performance\Service\CacheMetricsService;
 
@@ -15,12 +16,13 @@ class CacheMonitorCommand extends Command
     {
         $this
             ->setDescription('Monitor cache performance metrics in real-time')
-            ->setHelp('Displays real-time Varnish and Redis cache metrics');
+            ->setHelp('Displays real-time Varnish and Redis cache metrics')
+            ->addOption('magento-root', null, InputOption::VALUE_REQUIRED, 'Path to Magento root', getcwd());
     }
     
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $magentoRoot = getcwd();
+        $magentoRoot = (string)$input->getOption('magento-root');
         $metricsService = new CacheMetricsService($magentoRoot);
         
         while (true) {
@@ -47,6 +49,11 @@ class CacheMonitorCommand extends Command
                 $output->writeln(sprintf('  Evicted Keys: %s', number_format($redisMetrics['evicted_keys'])));
             }
             
+            if ($varnishMetrics['available'] === false && $redisMetrics['available'] === false) {
+                $output->writeln('<comment>No Varnish (varnishstat) or Redis endpoint reachable from this host.</comment>');
+                $output->writeln(sprintf('Magento root: %s (Redis endpoint is read from app/etc/env.php)', $magentoRoot));
+            }
+
             $output->writeln('');
             $output->writeln('Press Ctrl+C to exit');
             

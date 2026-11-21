@@ -363,6 +363,10 @@ class IndexersAnalyzer implements AnalyzerInterface
             return;
         }
 
+        // Magento accepts a scheme in the hostname field ("http://127.0.0.1");
+        // a raw TCP probe needs the bare host
+        $esHost = (string)preg_replace('#^[a-z][a-z0-9+.-]*://#i', '', rtrim((string)$esHost, '/'));
+
         // Test connection with timeout
         $errno = 0;
         $errstr = '';

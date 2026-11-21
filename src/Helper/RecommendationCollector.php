@@ -44,6 +44,39 @@ class RecommendationCollector
         );
     }
 
+    /**
+     * Add a recommendation with metadata (no affected files).
+     */
+    public function addWithMetadata(
+        string $area,
+        string $title,
+        int $priority,
+        string $details,
+        ?string $explanation = null,
+        array $metadata = []
+    ): void {
+        $this->recommendations[] = new Recommendation(
+            $area,
+            $title,
+            $priority,
+            $details,
+            $explanation,
+            [],
+            $metadata
+        );
+    }
+
+    /**
+     * Alias for getRecommendations() retained for backward compatibility
+     * with callers (GenerateCommand, MonitoringServer) that use getAll().
+     *
+     * @return Recommendation[]
+     */
+    public function getAll(): array
+    {
+        return $this->getRecommendations();
+    }
+
     public function getRecommendations(): array
     {
         return $this->recommendations;
