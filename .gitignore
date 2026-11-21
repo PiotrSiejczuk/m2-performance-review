@@ -5,6 +5,7 @@ composer.lock
 # PHAR
 *.phar
 *.phar.gz
+/bin/*.phar.sha256
 
 # IDE
 /.idea/

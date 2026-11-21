@@ -60,11 +60,11 @@ class GenerateCommand extends Command
                     return $this->generateReport($input, $output);
 
                 default:
-                    $output->writeln('<e>Unknown generation type: ' . $type . '</e>');
+                    $output->writeln('<error>Unknown generation type: ' . $type . '</error>');
                     return Command::FAILURE;
             }
         } catch (\Exception $e) {
-            $output->writeln('<e>Generation failed: ' . $e->getMessage() . '</e>');
+            $output->writeln('<error>Generation failed: ' . $e->getMessage() . '</error>');
             return Command::FAILURE;
         }
     }
@@ -123,11 +123,13 @@ class GenerateCommand extends Command
         $output->writeln('<comment>Analyzing current setup...</comment>');
         $recommendations = $this->runAnalysis($input->getOption('magento-root'), $output);
 
-        $output->writeln('');
-        $output->writeln('<comment>Generating AI-powered recommendations...</comment>');
-
         // Get API key
         $apiKey = $input->getOption('ai-key') ?: getenv('OPENAI_API_KEY');
+
+        $output->writeln('');
+        $output->writeln($apiKey
+            ? '<comment>Generating AI-powered recommendations...</comment>'
+            : '<comment>No OpenAI API key (--ai-key or OPENAI_API_KEY): generating a rule-based action plan.</comment>');
 
         // Generate recommendations
         $engine = new AIRecommendationEngine($recommendations, $apiKey);
@@ -164,10 +166,11 @@ class GenerateCommand extends Command
         $recommendations = $this->runAnalysis($input->getOption('magento-root'), $output);
 
         // Generate report content based on format
+        $magentoRoot = (string)$input->getOption('magento-root');
         $content = match($format) {
-            'html' => $this->generateHtmlReport($recommendations),
+            'html' => $this->renderInteractiveHtml($recommendations, $magentoRoot),
             'pdf' => $this->generatePdfReport($recommendations),
-            default => $this->generateHtmlReport($recommendations)
+            default => $this->renderInteractiveHtml($recommendations, $magentoRoot)
         };
 
         // Determine output file
@@ -327,6 +330,27 @@ class GenerateCommand extends Command
         $output->writeln('  Long-term optimizations: ' . count($recommendations['long_term'] ?? []));
     }
 
+    /**
+     * Interactive single-file report (filter chips, search, sort, expandable
+     * rows with full detail). The legacy generateHtmlReport() remains for
+     * backward compatibility but is no longer the default path.
+     */
+    private function renderInteractiveHtml(array $recommendations, string $magentoRoot): string
+    {
+        $context = \M2Performance\Service\StoreContext::forRoot($magentoRoot);
+        $runner = new \M2Performance\Service\AnalysisRunner($magentoRoot);
+        $score = $runner->computeScore($recommendations);
+
+        $renderer = new \M2Performance\Service\HtmlReportRenderer();
+
+        return $renderer->render(
+            $recommendations,
+            $context->getBaseSecureUrl(),
+            ['score' => $score['score'], 'grade' => $score['grade']],
+            \M2Performance\ToolVersion::VERSION
+        );
+    }
+
     private function generateHtmlReport(array $recommendations): string
     {
         $html = <<<'HTML'
@@ -415,22 +439,30 @@ class GenerateCommand extends Command
     
     <div class="summary">
         <h2>Executive Summary</h2>
-        <p>Analysis completed on <?= date('Y-m-d H:i:s') ?></p>
-        <p>Total issues found: <strong><?= count($recommendations) ?></strong></p>
-    </div>
-    
-    <h2>Recommendations by Priority</h2>
-    
 HTML;
 
-        // Group by priority
+        $html .= sprintf(
+            "        <p>Analysis completed on %s</p>\n        <p>Total issues found: <strong>%d</strong></p>\n    </div>\n\n    <h2>Recommendations by Priority</h2>\n\n",
+            date('Y-m-d H:i:s'),
+            count($recommendations)
+        );
+
+        // Group by priority. getPriority() returns an int constant, so map
+        // the integer to its display label rather than keying on strings.
+        $labels = [
+            \M2Performance\Model\Recommendation::PRIORITY_HIGH => 'High',
+            \M2Performance\Model\Recommendation::PRIORITY_MEDIUM => 'Medium',
+            \M2Performance\Model\Recommendation::PRIORITY_LOW => 'Low',
+        ];
+
         $byPriority = [];
         foreach ($recommendations as $rec) {
-            $byPriority[$rec->getPriority()][] = $rec;
+            $label = $labels[$rec->getPriority()] ?? 'Low';
+            $byPriority[$label][] = $rec;
         }
 
         foreach (['High', 'Medium', 'Low'] as $priority) {
-            if (!empty($byPriority[$priority])) {
+            if (empty($byPriority[$priority]) === false) {
                 $html .= "<h3>$priority Priority Issues</h3>\n";
                 $html .= '<div class="recommendations">';
 

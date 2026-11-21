@@ -9,37 +9,25 @@ class UpdateChecker
     private const CHECK_FILE = '/.m2-performance-update-check';
     private const CHECK_INTERVAL = 86400; // 24 hours
     
-    public static function checkInBackground(): void
+    /**
+     * Synchronous, rate-limited (once per CHECK_INTERVAL) update check.
+     *
+     * Deliberately not forked: a forked child shares the parent's PHAR file
+     * descriptor, which corrupts concurrent reads from the archive.
+     */
+    public static function checkIfDue(int $timeoutSeconds = 3): void
     {
-        // Only works on Unix-like systems with pcntl
-        if (!function_exists('pcntl_fork')) {
-            return;
-        }
-        
-        // Only check if running from PHAR
         if (!\Phar::running()) {
             return;
         }
-        
-        // Check if we should check (once per day)
+
         if (!self::shouldCheck()) {
             return;
         }
-        
-        $pid = pcntl_fork();
-        
-        if ($pid === -1) {
-            // Fork failed
-            return;
-        } elseif ($pid === 0) {
-            // Child process
-            self::performCheck();
-            exit(0);
-        }
-        
-        // Parent process continues immediately
+
+        self::performCheck($timeoutSeconds);
     }
-    
+
     private static function shouldCheck(): bool
     {
         $checkFile = sys_get_temp_dir() . self::CHECK_FILE;
@@ -52,21 +40,13 @@ class UpdateChecker
         return (time() - $lastCheck) > self::CHECK_INTERVAL;
     }
     
-    private static function performCheck(): void
+    private static function performCheck(int $timeoutSeconds): void
     {
+        // Record the attempt up front so an offline host is not re-checked on every run
+        @file_put_contents(sys_get_temp_dir() . self::CHECK_FILE, (string)time());
+
         try {
-            // Get current version
-            $currentVersion = 'unknown';
-            $pharPath = \Phar::running(false);
-            if ($pharPath) {
-                try {
-                    $phar = new \Phar($pharPath);
-                    $metadata = $phar->getMetadata();
-                    $currentVersion = $metadata['version'] ?? 'unknown';
-                } catch (\Exception $e) {
-                    // Ignore
-                }
-            }
+            $currentVersion = \M2Performance\ToolVersion::VERSION;
             
             // Get latest version from GitHub
             $context = stream_context_create([
@@ -76,7 +56,7 @@ class UpdateChecker
                         'User-Agent: M2-Performance-Tool',
                         'Accept: application/vnd.github.v3+json'
                     ],
-                    'timeout' => 10
+                    'timeout' => $timeoutSeconds
                 ]
             ]);
             
@@ -93,10 +73,7 @@ class UpdateChecker
             }
             
             $latestVersion = ltrim($data['tag_name'], 'v');
-            
-            // Save check timestamp
-            file_put_contents(sys_get_temp_dir() . self::CHECK_FILE, time());
-            
+
             // Check if update is available
             if (version_compare($currentVersion, $latestVersion, '<')) {
                 // Save notification

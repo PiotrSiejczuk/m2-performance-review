@@ -30,6 +30,22 @@ abstract class BaseScriptGenerator
         return false;
     }
     
+    /**
+     * Single-quote a value for bash. Titles/values come from analyzers and
+     * may contain quotes or $; double-quoted echo lines broke on
+     * 'cacheable="false"' and would expand anything shell-like.
+     * (escapeshellarg() is avoided: it can drop multibyte chars under a C locale.)
+     */
+    protected function shellQuote(string $value): string
+    {
+        return "'" . str_replace("'", "'\\''", $value) . "'";
+    }
+
+    protected function echoLine(string $text): string
+    {
+        return 'echo ' . $this->shellQuote($text) . "\n";
+    }
+
     protected function generateShebang(): string
     {
         return "#!/bin/bash\n";

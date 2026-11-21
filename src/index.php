@@ -11,9 +11,9 @@ if (PHP_SAPI !== 'cli') {
     exit('This tool must be run from the command line.' . PHP_EOL);
 }
 
-// Check PHP version
-if (version_compare(PHP_VERSION, '7.4.0', '<')) {
-    fwrite(STDERR, sprintf('Error: PHP 7.4 or higher is required. You are using PHP %s.' . PHP_EOL, PHP_VERSION));
+// Check PHP version (bundled symfony/console 6.4 requires 8.1)
+if (version_compare(PHP_VERSION, '8.1.0', '<')) {
+    fwrite(STDERR, sprintf('Error: PHP 8.1 or higher is required. You are using PHP %s.' . PHP_EOL, PHP_VERSION));
     exit(1);
 }
 

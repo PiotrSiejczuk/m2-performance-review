@@ -36,7 +36,9 @@ class CacheMetricsService
 
         // Get varnish statistics
         $output = [];
-        exec($varnishstatPath . ' -1 -j 2>/dev/null', $output, $returnCode);
+        $safeResult = SafeExec::run($varnishstatPath . ' -1 -j 2>/dev/null', 5);
+        $output = $safeResult['output'];
+        $returnCode = $safeResult['exit_code'];
 
         if ($returnCode === 0 && !empty($output)) {
             $stats = json_decode(implode('', $output), true);
@@ -88,13 +90,26 @@ class CacheMetricsService
 
             $env = include $envPath;
             
-            // Check session Redis
+            // Session Redis first, then the cache backend (Redis/Valkey/L2 remote tier)
+            $endpoint = null;
             if (isset($env['session']['save']) && $env['session']['save'] === 'redis') {
-                $host = $env['session']['redis']['host'] ?? '127.0.0.1';
-                $port = $env['session']['redis']['port'] ?? 6379;
-                $password = $env['session']['redis']['password'] ?? null;
-                
-                $redisMetrics = $this->queryRedisInfo($host, $port, $password);
+                $endpoint = [
+                    $env['session']['redis']['host'] ?? '127.0.0.1',
+                    $env['session']['redis']['port'] ?? 6379,
+                    $env['session']['redis']['password'] ?? null,
+                ];
+            } elseif (($cacheOptions = StoreContext::getRedisCacheBackendOptions($env['cache']['frontend']['default'] ?? [])) !== null) {
+                $endpoint = [
+                    $cacheOptions['server'] ?? '127.0.0.1',
+                    $cacheOptions['port'] ?? 6379,
+                    $cacheOptions['password'] ?? null,
+                ];
+            }
+
+            if ($endpoint !== null) {
+                [$host, $port, $password] = $endpoint;
+
+                $redisMetrics = $this->queryRedisInfo((string)$host, (int)$port, $password !== '' ? $password : null);
                 if ($redisMetrics) {
                     $metrics = array_merge($metrics, $redisMetrics);
                     $metrics['available'] = true;
@@ -197,6 +212,11 @@ class CacheMetricsService
 
     private function queryRedisInfo(string $host, int $port, ?string $password): ?array
     {
+        // Magento talks to Redis via Credis; phpredis may legitimately be absent
+        if (!extension_loaded('redis')) {
+            return null;
+        }
+
         try {
             $redis = new \Redis();
             if (!$redis->connect($host, $port, 1.0)) {
@@ -271,16 +291,14 @@ class CacheMetricsService
             }
 
             // Check backend cache
-            $cacheBackend = $env['cache']['frontend']['default']['backend'] ?? 'file';
-            if (strpos($cacheBackend, 'Redis') !== false) {
+            if (StoreContext::getRedisCacheBackendOptions($env['cache']['frontend']['default'] ?? []) !== null) {
                 $score += 10;
             } else {
                 $issues[] = 'Not using Redis for cache backend';
             }
 
             // Check page cache
-            $pageCacheBackend = $env['cache']['frontend']['page_cache']['backend'] ?? 'file';
-            if (strpos($pageCacheBackend, 'Redis') !== false) {
+            if (StoreContext::getRedisCacheBackendOptions($env['cache']['frontend']['page_cache'] ?? []) !== null) {
                 $score += 5;
             } else {
                 $issues[] = 'Not using Redis for page cache';

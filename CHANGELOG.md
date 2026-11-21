@@ -5,6 +5,95 @@ All notable changes to the Magento 2 Performance Review Tool will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-11-21
+
+Feature release plus a full validation pass of every command and export in Magento Developer
+and Production mode (Adobe Commerce 2.4.8, PHP 8.4, Hyvä, Fastly, Valkey).
+
+### Added
+- **MCP server mode** (`mcp`) - JSON-RPC 2.0 over stdio for AI coding agents (Claude Code, Cursor, Copilot).
+  Tools: `run_analysis`, `list_analyzers`, `get_recommendations`, `export_sarif`, `save_baseline`,
+  `compare_baseline`, `list_baselines`. Diagnostics go to stderr; stdout stays protocol-clean.
+- **Baselines & regression detection** (`baseline --save | --list | --compare`) with
+  `--fail-on-regression` CI gate and `review --compare-to=<name>`. Baselines record profile and
+  analysis mode (production-focused vs developer-aware) and warn on like-for-unlike comparisons.
+- **SARIF 2.1.0 export** (`--export=sarif`) for GitHub Code Scanning.
+- **Interactive single-file HTML report** - filter chips, search, sort, expandable findings, target store URL.
+- **Tool configuration file** `.m2perf.json` (auto-discovered in Magento root / CWD, or `--config`):
+  disabled analyzers, custom profiles, scoring weights, `thresholds.min_score` (enforced by
+  `baseline --compare --fail-on-regression`).
+- **StaticCodeAnalyzer** - N+1 patterns (per-item repository `get()` / loads in loops),
+  `cache->save()` without TTL, int-typed parameters on VARCHAR-keyed concepts (index bypass risk).
+- **StoreContext** - one-time detection of Hyvä / Hyvä Checkout, Fastly, Magento mode and the target
+  store base URL, shared by analyzers, reports and the dashboard ("Target store: ...").
+- **AnalysisRunner** - single orchestration path for `review`, `baseline` and `mcp`.
+- **SafeExec** - timeouts around external commands (`find`, `sysctl`, `varnishstat`, DB probes).
+- `--continue-on-error` - a failing analyzer is reported as a finding instead of aborting the run.
+- `baseline --allow-dev-mode`, `cache:monitor --magento-root`, benchmark scenario validation.
+- `build-phar.php` writes PHAR metadata (version, build date) and `m2-performance.phar.sha256`.
+
+### Changed
+- `review` now runs through `AnalysisRunner`: `--config` (disabled analyzers, custom profiles, weights),
+  `--continue-on-error` and developer-mode awareness behave identically in CLI, baselines and MCP.
+- **One scoring model everywhere** - the CLI dashboard, HTML report, baselines and MCP all use the
+  weighted High=10 / Medium=4 / Low=1 penalty (configurable). Previously the dashboard used a different
+  formula, so the same run showed different scores.
+- `--areas` also accepts analyzer identifiers (e.g. `uptime`, `layout-cache`) and fails with exit code 2
+  and the list of valid values when nothing matches (previously: silent "Perfect Score").
+- Frontend checks are Hyvä-aware (no Luma minify/merge/bundle advice on Hyvä); Varnish checks are skipped
+  when Fastly is detected; Varnish fix scripts are not generated for Fastly stores.
+- Configuration precedence now matches Magento: `CONFIG__DEFAULT__*` env vars > `env.php` > `config.php` >
+  database (the database used to win, reporting values that file/env overrides had replaced).
+- Background update check removed; the daily check runs synchronously (3 s timeout) only in interactive
+  sessions - never in CI, pipes, `-n` runs or MCP.
+- `self-update`: version taken from the binary itself, SHA-256 verification against the published checksum,
+  fallback to the tagged raw PHAR when a release has no PHAR asset, safe replace on Windows.
+- `--async` is documented as reserved: execution is sequential until real parallelism lands.
+
+### Fixed
+- **Intermittent `Command "mcp" is not defined` / PHP parse errors inside the PHAR** - the forked background
+  update check shared the PHAR file descriptor with the parent (~1 in 6 runs failed). Root-caused and removed.
+- **Generated system fix script wrote `opcache.max_accelerated_files=0`** (PHP clamps 0 to the 200-file
+  minimum - a severe regression on a 100k+ file codebase) and wrote `validate_timestamps=0` on
+  developer-mode machines. Now uses the next OPcache prime covering the detected file count, emits the
+  ini block once, never disables timestamp validation in developer mode, and leaves development tuning manual. The analyzer's
+  "set to 0 for automatic" advice is corrected as well.
+- Fix scripts: titles/values are single-quoted (a title containing `"` or `$` broke or expanded in bash),
+  the generic frontend fallback no longer deletes `pub/static/_cache` for unrelated findings,
+  indexer fixes reindex only the reported indexers, `nginx -t`/`apachectl` checks work under `set -e`.
+- `self-update --check` reported "No PHAR file found in latest release" and treated the running version as
+  `unknown` (which would have *downgraded* newer builds).
+- Redis/Valkey: Magento 2.4.8 `Valkey` cache backend and the Adobe Commerce Cloud L2
+  `RemoteSynchronizedCache` (Redis remote tier) were reported as "Configure Redis for cache storage" (High).
+  Redis probes now use the configured host/port instead of `127.0.0.1:6379`.
+- Adobe Commerce not detected for `magento/product-enterprise-edition` / `magento/magento-cloud-metapackage`
+  installs (the Commerce analyzer never ran).
+- Search engine check failed when the hostname contains a scheme (`http://...`), and read the database value
+  instead of the `env.php` override.
+- Target store URL now resolves `CONFIG__DEFAULT__WEB__SECURE__BASE_URL` and `host:port` DB hosts.
+- `--watch` showed empty results on every refresh (new collector never reached the analyzers).
+- `review --compare-to` reported a false REGRESSION in developer mode (developer-aware run vs
+  production-focused baseline).
+- `--export=<unsupported>` exited 0; it now exits 1 and lists supported formats.
+- Non-TTY runs printed `TERM environment variable not set` (shelled out to `clear`); screen clearing is
+  now TTY-only.
+- Result table borders rendered with wrong corner characters (Symfony `setCrossingChars` argument order).
+- Async progress bar showed a literal `%message%` placeholder; in non-ANSI output (CI logs, pipes) the
+  progress bar printed one line per step and glued its last line to the results table - plain output
+  now prints a single "Running N analyzers..." line.
+- `benchmark`: `--url` and `--scenarios` were ignored (always `http://localhost`, all scenarios), failed
+  requests were averaged as 0 ms and reported as "good", cache/database results rendered as empty tables,
+  Redis benchmark ignored the configured endpoint, `<e>` style tags printed literally.
+- `cache:monitor` ignored the Magento root (used CWD) and printed an empty screen when nothing was reachable;
+  it now also reads the cache backend endpoint and no longer fatals when phpredis is not installed.
+- `generate recommendations` claimed "AI-powered" output without an API key (now states rule-based fallback).
+- PHP 8.4 deprecation: implicitly nullable parameter in `EnvironmentLoader`.
+- `GenerateCommand` / `MonitoringServer` crashes on legacy `getMessage()` / `getDetail()` / `getAll()` calls.
+
+### Removed
+- `AsyncCheckRunner` (sequential placeholder that bypassed `--continue-on-error` and timings).
+- Legacy static HTML export in the review command (superseded by the interactive report).
+
 ## [1.0.3] - 2025-11-24
 
 ### Added

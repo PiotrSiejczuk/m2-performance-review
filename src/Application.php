@@ -5,12 +5,10 @@ namespace M2Performance;
 use Symfony\Component\Console\Application as ConsoleApplication;
 use M2Performance\Command\M2PerformanceCommand;
 use M2Performance\Command\SelfUpdateCommand;
-use Symfony\Component\Console\Input\ArrayInput;
-use Symfony\Component\Console\Output\NullOutput;
 
 class Application extends ConsoleApplication
 {
-    private const VERSION = '1.0.3';
+    public const VERSION = ToolVersion::VERSION;
     
     public function __construct()
     {
@@ -19,14 +17,18 @@ class Application extends ConsoleApplication
         // Add main command
         $command = new M2PerformanceCommand();
         $this->add($command);
-        $this->setDefaultCommand($command->getName(), true);
+        // Default to the review command but keep multi-command routing enabled
+        // (single-command mode previously blocked self-update/benchmark/mcp routing)
+        $this->setDefaultCommand($command->getName(), false);
         
         // Add self-update command
+        // NOTE: no background update check here. A pcntl_fork()ed child shares
+        // the parent's open PHAR file descriptor (and its offset), so concurrent
+        // class loading corrupted reads at random ("Command ... is not defined",
+        // parse errors inside vendor files). The daily check now runs
+        // synchronously from the review command, interactive sessions only.
         if (\Phar::running()) {
             $this->add(new SelfUpdateCommand());
-            
-            // Check for updates in background (non-blocking)
-            $this->checkForUpdatesInBackground();
         }
         
         // Add other commands if they exist
@@ -40,7 +42,9 @@ class Application extends ConsoleApplication
             'M2Performance\Command\BenchmarkCommand',
             'M2Performance\Command\GenerateCommand',
             'M2Performance\Command\MonitorCommand',
-            'M2Performance\Command\CacheMonitorCommand'
+            'M2Performance\Command\CacheMonitorCommand',
+            'M2Performance\Command\McpServerCommand',
+            'M2Performance\Command\BaselineCommand'
         ];
         
         foreach ($additionalCommands as $commandClass) {
@@ -64,31 +68,6 @@ class Application extends ConsoleApplication
             } catch (\Exception $e) {
                 // Silently skip commands that can't be loaded
                 // You can add logging here if needed
-            }
-        }
-    }
-    
-    private function checkForUpdatesInBackground(): void
-    {
-        // Only check if we should (once per day)
-        if (!SelfUpdateCommand::shouldCheckForUpdates()) {
-            return;
-        }
-        
-        // Run check in background to not slow down the main command
-        if (function_exists('pcntl_fork')) {
-            $pid = pcntl_fork();
-            if ($pid === 0) {
-                // Child process - check for updates
-                try {
-                    $command = $this->find('self-update');
-                    $input = new ArrayInput(['command' => 'self-update', '--check' => true]);
-                    $output = new NullOutput();
-                    $command->run($input, $output);
-                } catch (\Exception $e) {
-                    // Ignore errors in background check
-                }
-                exit(0);
             }
         }
     }

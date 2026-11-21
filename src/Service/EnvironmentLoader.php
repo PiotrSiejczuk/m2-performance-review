@@ -6,7 +6,7 @@ class EnvironmentLoader
     private string $magentoRoot;
     private array $dbConfig;
 
-    public function __construct(string $magentoRoot = null)
+    public function __construct(?string $magentoRoot = null)
     {
         $this->magentoRoot = $magentoRoot ?? getcwd();
         $this->loadEnvConfig();

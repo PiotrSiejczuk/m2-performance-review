@@ -34,7 +34,11 @@ class XmlReader
             return;
         }
         foreach (array_keys($data['require']) as $pkg) {
+            // product-enterprise-edition (on-prem) and the Cloud metapackage are
+            // the standard Adobe Commerce roots; the older names stay for legacy installs
             if (stripos($pkg, 'magento/enterprise') !== false
+                || stripos($pkg, 'magento/product-enterprise-edition') !== false
+                || stripos($pkg, 'magento/magento-cloud-metapackage') !== false
                 || stripos($pkg, 'magento/module-customer-segment') !== false
             ) {
                 $this->isAdobeCommerce = true;

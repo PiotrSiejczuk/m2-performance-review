@@ -17,54 +17,46 @@ class EnhancedConfigLoader
     }
 
     /**
-     * Get configuration value respecting Magento's hierarchy
+     * Get configuration value respecting Magento's hierarchy.
+     *
+     * Magento resolves (highest first): CONFIG__DEFAULT__* environment
+     * variables -> env.php system -> config.php system -> core_config_data.
+     * File/env overrides lock the value, so the database must lose; reading
+     * the DB first reported stale values (e.g. a search host that env.php
+     * overrides on Adobe Commerce Cloud).
      */
     public function getConfigValue(string $path, $default = null)
     {
-        // 1. Try database first (highest priority)
-        $dbValue = $this->getConfigFromDatabase($path);
-        if ($dbValue !== null) {
-            return $dbValue;
-        }
+        $sources = [
+            fn() => $this->getConfigFromMagentoEnvVar($path),
+            fn() => $this->getConfigFromEnvPhp($path),
+            fn() => $this->getConfigFromConfigPhp($path),
+            fn() => $this->getConfigFromDatabase($path),
+            // Legacy tool-specific MAGENTO_<PATH> variable (not a Magento convention)
+            fn() => $this->getConfigFromEnvVar($path),
+        ];
 
-        // 2. Try config.php
-        $configPhpValue = $this->getConfigFromConfigPhp($path);
-        if ($configPhpValue !== null) {
-            return $configPhpValue;
-        }
-
-        // 3. Try env.php
-        $envValue = $this->getConfigFromEnvPhp($path);
-        if ($envValue !== null) {
-            return $envValue;
-        }
-
-        // 4. Try environment variables
-        $envVarValue = $this->getConfigFromEnvVar($path);
-        if ($envVarValue !== null) {
-            return $envVarValue;
+        foreach ($sources as $source) {
+            $value = $source();
+            if ($value !== null) {
+                return $value;
+            }
         }
 
         return $default;
     }
 
     /**
-     * Load all core configuration with proper hierarchy
+     * Load all core configuration with proper hierarchy (later merges win).
      */
     public function getAllConfig(): array
     {
-        $config = [];
-
-        // Start with env.php (lowest priority)
-        $config = array_merge($config, $this->loadEnvPhpConfig());
-
-        // Merge config.php
-        $config = array_merge($config, $this->loadConfigPhpConfig());
-
-        // Merge database config (highest priority)
-        $config = array_merge($config, $this->loadDatabaseConfig());
-
-        return $config;
+        return array_merge(
+            $this->loadDatabaseConfig(),
+            $this->loadConfigPhpConfig(),
+            $this->loadEnvPhpConfig(),
+            $this->loadMagentoEnvVarConfig()
+        );
     }
 
     private function getConfigFromDatabase(string $path): ?string
@@ -177,6 +169,29 @@ class EnhancedConfigLoader
 
         $config = include $configPath;
         return $this->getNestedArrayValue($config, $path);
+    }
+
+    private function getConfigFromMagentoEnvVar(string $path): ?string
+    {
+        $value = getenv('CONFIG__DEFAULT__' . strtoupper(str_replace('/', '__', $path)));
+
+        return is_string($value) === true ? $value : null;
+    }
+
+    /**
+     * Default-scope CONFIG__DEFAULT__SECTION__GROUP__FIELD variables as config paths.
+     */
+    private function loadMagentoEnvVarConfig(): array
+    {
+        $config = [];
+        foreach (getenv() as $name => $value) {
+            if (str_starts_with((string)$name, 'CONFIG__DEFAULT__') === true) {
+                $path = strtolower(str_replace('__', '/', substr((string)$name, strlen('CONFIG__DEFAULT__'))));
+                $config[$path] = $value;
+            }
+        }
+
+        return $config;
     }
 
     private function getConfigFromEnvVar(string $path): ?string

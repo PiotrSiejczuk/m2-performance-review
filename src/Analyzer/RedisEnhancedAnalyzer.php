@@ -5,6 +5,7 @@ namespace M2Performance\Analyzer;
 use M2Performance\Contract\AnalyzerInterface;
 use M2Performance\Helper\RecommendationCollector;
 use M2Performance\Model\Recommendation;
+use M2Performance\Service\StoreContext;
 
 class RedisEnhancedAnalyzer implements AnalyzerInterface
 {
@@ -110,9 +111,9 @@ class RedisEnhancedAnalyzer implements AnalyzerInterface
         }
 
         $env = include $envPath;
-        $cacheConfig = $env['cache']['frontend']['default']['backend_options'] ?? [];
+        $cacheConfig = StoreContext::getRedisCacheBackendOptions($env['cache']['frontend']['default'] ?? []);
 
-        if (empty($cacheConfig) || !str_contains($env['cache']['frontend']['default']['backend'] ?? '', 'Redis')) {
+        if ($cacheConfig === null) {
             $this->collector->add(
                 'redis',
                 'Configure Redis for cache storage',
@@ -158,10 +159,11 @@ class RedisEnhancedAnalyzer implements AnalyzerInterface
             return;
         }
 
-        // Try to connect and get Redis info
+        // Try to connect and get Redis info (configured host first, not just localhost)
+        [$host, $port] = $this->resolveRedisEndpoint();
         try {
             $redis = new \Redis();
-            if (!@$redis->connect('127.0.0.1', 6379, 0.5)) {
+            if (!@$redis->connect($host, $port, 0.5)) {
                 return;
             }
 
@@ -300,5 +302,20 @@ class RedisEnhancedAnalyzer implements AnalyzerInterface
                 'This also reduces network traffic between application and Redis servers.'
             );
         }
+    }
+
+    /**
+     * @return array{0: string, 1: int}
+     */
+    private function resolveRedisEndpoint(): array
+    {
+        $envPath = $this->magentoRoot . '/app/etc/env.php';
+        $env = file_exists($envPath) ? include $envPath : [];
+        $options = StoreContext::getRedisCacheBackendOptions($env['cache']['frontend']['default'] ?? []) ?? [];
+
+        $host = $options['server'] ?? $env['session']['redis']['host'] ?? '127.0.0.1';
+        $port = $options['port'] ?? $env['session']['redis']['port'] ?? 6379;
+
+        return [(string)$host, (int)$port];
     }
 }

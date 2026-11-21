@@ -100,9 +100,9 @@ class DatabaseAnalyzer implements AnalyzerInterface
         }
 
         $command = escapeshellcmd($cliPath) . ' info:database:tables';
-        $output = [];
-        $returnVar = 0;
-        @exec($command . ' 2>&1', $output, $returnVar);
+        $result = \M2Performance\Service\SafeExec::run($command, 30);
+        $output = $result['output'];
+        $returnVar = $result['exit_code'];
         if ($returnVar !== 0) {
             return;
         }

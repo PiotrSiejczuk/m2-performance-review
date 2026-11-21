@@ -34,19 +34,30 @@ class BenchmarkCommand extends Command
         $output->writeln('============================');
         $output->writeln('');
 
-        // Initialize benchmark runner
-        $runner = new BenchmarkRunner($magentoRoot);
+        // --url wins over the store's configured base URL
+        $url = $input->getOption('url');
+        $runner = new BenchmarkRunner($magentoRoot, is_string($url) === true ? $url : null);
 
-        // Set base URL if provided
-        if ($url = $input->getOption('url')) {
-            putenv('MAGENTO_BASE_URL=' . $url);
+        $selectedScenarios = [];
+        if (is_string($scenarios) === true && $scenarios !== '' && strtolower($scenarios) !== 'all') {
+            $selectedScenarios = array_values(array_filter(array_map('trim', explode(',', strtolower($scenarios)))));
+            $unknown = array_diff($selectedScenarios, BenchmarkRunner::SCENARIOS);
+            if (count($unknown) > 0) {
+                $output->writeln(sprintf(
+                    '<error>Unknown scenario(s): %s. Available: %s</error>',
+                    implode(', ', $unknown),
+                    implode(', ', BenchmarkRunner::SCENARIOS)
+                ));
+
+                return Command::INVALID;
+            }
         }
 
         $output->writeln('<comment>Running performance benchmarks...</comment>');
         $output->writeln('');
 
         try {
-            $results = $runner->runBenchmarks($output);
+            $results = $runner->runBenchmarks($output, $selectedScenarios);
             $this->displayResults($results, $output);
 
             // Export if requested
@@ -58,7 +69,7 @@ class BenchmarkCommand extends Command
             $this->showSummary($results, $output);
 
         } catch (\Exception $e) {
-            $output->writeln('<e>Benchmark failed: ' . $e->getMessage() . '</e>');
+            $output->writeln('<error>Benchmark failed: ' . $e->getMessage() . '</error>');
             return Command::FAILURE;
         }
 
@@ -80,8 +91,29 @@ class BenchmarkCommand extends Command
                         continue;
                     }
 
+                    // Cache/database scenarios nest per-probe results; they used to be skipped (empty tables)
+                    if ($key === 'results' && is_array($value)) {
+                        foreach ($value as $probe => $probeValue) {
+                            if (is_array($probeValue) === false) {
+                                $rows[] = [$this->formatMetricName((string)$probe), $probeValue, ''];
+                                continue;
+                            }
+                            foreach ($probeValue as $metric => $metricValue) {
+                                if ($metric === 'status' || is_array($metricValue)) {
+                                    continue;
+                                }
+                                $rows[] = [
+                                    $this->formatMetricName($probe . ' ' . $metric),
+                                    $metricValue,
+                                    $this->getStatusIcon((string)($probeValue['status'] ?? 'unknown')),
+                                ];
+                            }
+                        }
+                        continue;
+                    }
+
                     if (is_array($value)) {
-                        continue; // Skip complex data for now
+                        continue;
                     }
 
                     $status = $this->getStatusIcon($benchmark['status'] ?? 'unknown');
@@ -112,6 +144,7 @@ class BenchmarkCommand extends Command
         $goodCount = 0;
         $warningCount = 0;
         $criticalCount = 0;
+        $errorCount = 0;
 
         foreach ($results as $benchmark) {
             if (isset($benchmark['status'])) {
@@ -125,20 +158,27 @@ class BenchmarkCommand extends Command
                     case 'critical':
                         $criticalCount++;
                         break;
+                    case 'error':
+                        $errorCount++;
+                        break;
                 }
             }
         }
 
         $output->writeln(sprintf(
-            '<info>✓ Good:</info> %d | <comment>⚠ Warning:</comment> %d | <e>✗ Critical:</e> %d',
+            '<info>✓ Good:</info> %d | <comment>⚠ Warning:</comment> %d | <error>✗ Critical:</error> %d | <error>✗ Failed:</error> %d',
             $goodCount,
             $warningCount,
-            $criticalCount
+            $criticalCount,
+            $errorCount
         ));
 
-        if ($criticalCount > 0) {
+        if ($errorCount > 0) {
             $output->writeln('');
-            $output->writeln('<e>Critical performance issues detected. Immediate action recommended.</e>');
+            $output->writeln('<error>Some scenarios could not be measured (see recommendations above).</error>');
+        } elseif ($criticalCount > 0) {
+            $output->writeln('');
+            $output->writeln('<error>Critical performance issues detected. Immediate action recommended.</error>');
         } elseif ($warningCount > 0) {
             $output->writeln('');
             $output->writeln('<comment>Some performance optimizations available.</comment>');
@@ -199,7 +239,8 @@ class BenchmarkCommand extends Command
         return match($status) {
             'good' => '<info>✓</info>',
             'warning' => '<comment>⚠</comment>',
-            'critical' => '<e>✗</e>',
+            'critical' => '<error>✗</error>',
+            'error' => '<error>✗ failed</error>',
             default => '?'
         };
     }

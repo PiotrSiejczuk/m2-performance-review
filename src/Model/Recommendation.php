@@ -54,6 +54,23 @@ class Recommendation
         return $this->details;
     }
 
+    /**
+     * Alias for getTitle(); some callers (GenerateCommand, InfrastructureGenerator)
+     * use the legacy getMessage() name.
+     */
+    public function getMessage(): string
+    {
+        return $this->getTitle();
+    }
+
+    /**
+     * Alias for getDetails(); legacy callers use the singular getDetail().
+     */
+    public function getDetail(): string
+    {
+        return $this->getDetails();
+    }
+
     public function getExplanation(): ?string
     {
         return $this->explanation;

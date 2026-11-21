@@ -7,26 +7,40 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 class BenchmarkRunner
 {
+    public const SCENARIOS = ['homepage', 'category', 'product', 'search', 'api', 'admin', 'cache', 'database'];
+
     private string $magentoRoot;
+    private ?string $baseUrl;
     private array $results = [];
 
-    public function __construct(string $magentoRoot)
+    public function __construct(string $magentoRoot, ?string $baseUrl = null)
     {
         $this->magentoRoot = rtrim($magentoRoot, "/\\");
+        $this->baseUrl = $baseUrl !== null && $baseUrl !== '' ? rtrim($baseUrl, '/') : null;
     }
 
-    public function runBenchmarks(OutputInterface $output): array
+    /**
+     * @param string[] $scenarios Subset of SCENARIOS; empty = all
+     */
+    public function runBenchmarks(OutputInterface $output, array $scenarios = []): array
     {
-        $benchmarks = [
-            'homepage' => $this->benchmarkHomepage(),
-            'category' => $this->benchmarkCategory(),
-            'product' => $this->benchmarkProduct(),
-            'search' => $this->benchmarkSearch(),
-            'api' => $this->benchmarkApi(),
-            'admin' => $this->benchmarkAdmin(),
-            'cache' => $this->benchmarkCachePerformance(),
-            'database' => $this->benchmarkDatabase()
+        $runners = [
+            'homepage' => fn() => $this->benchmarkHomepage(),
+            'category' => fn() => $this->benchmarkCategory(),
+            'product' => fn() => $this->benchmarkProduct(),
+            'search' => fn() => $this->benchmarkSearch(),
+            'api' => fn() => $this->benchmarkApi(),
+            'admin' => fn() => $this->benchmarkAdmin(),
+            'cache' => fn() => $this->benchmarkCachePerformance(),
+            'database' => fn() => $this->benchmarkDatabase(),
         ];
+
+        $benchmarks = [];
+        foreach ($runners as $name => $runner) {
+            if (count($scenarios) === 0 || in_array($name, $scenarios, true) === true) {
+                $benchmarks[$name] = $runner();
+            }
+        }
 
         return $benchmarks;
     }
@@ -71,6 +85,7 @@ class BenchmarkRunner
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_TIMEOUT, 10);
             curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/json']);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 
             $response = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -86,6 +101,20 @@ class BenchmarkRunner
 
         $avgTime = array_sum(array_column($results, 'time')) / count($results);
         $successRate = (array_sum(array_column($results, 'success')) / count($results)) * 100;
+        $lastStatus = (int)end($results)['status'];
+
+        if ((float)$successRate === 0.0) {
+            return [
+                'name' => 'REST API',
+                'url' => $url,
+                'http_status' => $lastStatus,
+                'success_rate' => 0,
+                'status' => 'error',
+                'recommendation' => $lastStatus === 401
+                    ? 'HTTP 401: anonymous REST access is disabled (Magento default); timings would only measure the rejection.'
+                    : sprintf('No successful response (HTTP %d). Check the URL and connectivity.', $lastStatus),
+            ];
+        }
 
         return [
             'name' => 'REST API',
@@ -109,11 +138,25 @@ class BenchmarkRunner
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_TIMEOUT, 10);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 
         curl_exec($ch);
         $totalTime = curl_getinfo($ch, CURLINFO_TOTAL_TIME);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
         curl_close($ch);
+
+        if ($httpCode === 0 || $httpCode >= 400) {
+            return [
+                'name' => 'Admin Login Page',
+                'url' => $url,
+                'status_code' => $httpCode,
+                'status' => 'error',
+                'recommendation' => $httpCode === 0
+                    ? 'Connection failed: ' . $curlError
+                    : sprintf('HTTP %d returned for the admin URL.', $httpCode),
+            ];
+        }
 
         return [
             'name' => 'Admin Login Page',
@@ -161,28 +204,35 @@ class BenchmarkRunner
             ];
         }
 
-        // Test Redis if available
+        // Test Redis if available (configured cache endpoint, not just localhost)
         if (extension_loaded('redis')) {
+            $envPath = $this->magentoRoot . '/app/etc/env.php';
+            $env = file_exists($envPath) ? include $envPath : [];
+            $options = StoreContext::getRedisCacheBackendOptions($env['cache']['frontend']['default'] ?? []) ?? [];
             try {
                 $redis = new \Redis();
-                if ($redis->connect('127.0.0.1', 6379, 0.5)) {
+                if ($redis->connect((string)($options['server'] ?? '127.0.0.1'), (int)($options['port'] ?? 6379), 0.5)) {
+                    if (isset($options['password']) === true && $options['password'] !== '') {
+                        $redis->auth((string)$options['password']);
+                    }
+                    $redis->select((int)($options['database'] ?? 0));
                     $testData = str_repeat('A', 1024);
 
                     $start = microtime(true);
                     for ($i = 0; $i < 1000; $i++) {
-                        $redis->set('benchmark_' . $i, $testData);
+                        $redis->set('m2perf_benchmark_' . $i, $testData, 60);
                     }
                     $setTime = microtime(true) - $start;
 
                     $start = microtime(true);
                     for ($i = 0; $i < 1000; $i++) {
-                        $redis->get('benchmark_' . $i);
+                        $redis->get('m2perf_benchmark_' . $i);
                     }
                     $getTime = microtime(true) - $start;
 
                     // Cleanup
                     for ($i = 0; $i < 1000; $i++) {
-                        $redis->del('benchmark_' . $i);
+                        $redis->del('m2perf_benchmark_' . $i);
                     }
 
                     $results['redis'] = [
@@ -302,11 +352,30 @@ class BenchmarkRunner
                 'connect_time' => $info['connect_time'],
                 'starttransfer_time' => $info['starttransfer_time'],
                 'size' => $info['size_download'],
-                'status' => $info['http_code']
+                'status' => $info['http_code'],
+                'error' => $info['http_code'] === 0 ? 'connection failed' : null,
             ];
 
             // Small delay between requests
             usleep(100000); // 100ms
+        }
+
+        // A failed request has ~0 ms timings; averaging it in reported broken
+        // pages as "good". Surface failures instead.
+        $failed = array_filter($results, static fn(array $r): bool => $r['status'] === 0 || $r['status'] >= 400);
+        if (count($failed) === count($results)) {
+            $lastStatus = (int)end($results)['status'];
+
+            return [
+                'name' => $name,
+                'url' => $url,
+                'iterations' => $iterations,
+                'http_status' => $lastStatus,
+                'status' => 'error',
+                'recommendation' => $lastStatus === 0
+                    ? 'Connection failed - check --url / base URL and that the host resolves from this machine.'
+                    : sprintf('HTTP %d - the page is not available at this URL (adjust the scenario URL or --url).', $lastStatus),
+            ];
         }
 
         // Calculate averages
@@ -323,17 +392,26 @@ class BenchmarkRunner
             'avg_connect_time' => round($avgConnectTime, 3),
             'avg_ttfb' => round($avgTTFB, 3),
             'avg_size_kb' => round($avgSize / 1024, 2),
-            'status' => $this->getPerformanceStatus($avgTotalTime),
+            'failed_requests' => count($failed),
+            'status' => count($failed) > 0 ? 'warning' : $this->getPerformanceStatus($avgTotalTime),
             'recommendation' => $this->getPerformanceRecommendation($avgTotalTime, $avgTTFB, $avgSize)
         ];
     }
 
     private function getBaseUrl(): string
     {
-        $envPath = $this->magentoRoot . '/app/etc/env.php';
-        if (file_exists($envPath)) {
-            $env = include $envPath;
-            // Try to get from env.php (not standard but sometimes stored)
+        if ($this->baseUrl !== null) {
+            return $this->baseUrl;
+        }
+
+        $envUrl = getenv('MAGENTO_BASE_URL');
+        if (is_string($envUrl) === true && $envUrl !== '') {
+            return rtrim($envUrl, '/');
+        }
+
+        $storeUrl = StoreContext::forRoot($this->magentoRoot)->getBaseSecureUrl();
+        if ($storeUrl !== null) {
+            return rtrim($storeUrl, '/');
         }
 
         // Try to detect from nginx config
