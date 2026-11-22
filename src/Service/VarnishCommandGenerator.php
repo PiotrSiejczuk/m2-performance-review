@@ -92,7 +92,7 @@ class VarnishCommandGenerator extends BaseScriptGenerator
         // Backup existing VCL
         $script .= "# Backup existing VCL configuration\n";
         $script .= "if [ -f /etc/varnish/default.vcl ]; then\n";
-        $script .= "    cp /etc/varnish/default.vcl /etc/varnish/default.vcl.backup.\$(date +%Y%m%d_%H%M%S)\n";
+        $script .= "    cp /etc/varnish/default.vcl \"/etc/varnish/default.vcl.backup.\$(date +%Y%m%d_%H%M%S)\"\n";
         $script .= "    echo \"  ✓ Backed up existing VCL\"\n";
         $script .= "fi\n\n";
         

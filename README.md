@@ -1,4 +1,4 @@
-# Magento 2 Performance Review Tool v1.0.4
+# Magento 2 Performance Review Tool v1.0.4.1
 
 <div align="center">
 
@@ -57,6 +57,8 @@ A comprehensive performance analysis and optimization tool for Magento 2 and Ado
 
 ## 🆕 What's New in v1.0.4
 
+> **v1.0.4.1 hotfix:** fixes a crash on stores using Varnish as Full Page Cache (`caching_application=2`). All v1.0.4 users should upgrade (`self-update`).
+
 - **🤖 MCP Server** - `mcp` command exposes analysis, findings, SARIF export and baselines to AI coding agents (Claude Code, Cursor, Copilot) over stdio
 - **📉 Baselines & Regression Gates** - `baseline --save/--compare --fail-on-regression` and `review --compare-to` for CI/CD
 - **🛡️ SARIF 2.1.0 Export** - findings straight into GitHub Code Scanning
@@ -114,8 +116,8 @@ A comprehensive performance analysis and optimization tool for Magento 2 and Ado
 ### Option 1: Download Pre-built PHAR (Recommended)
 ```bash
 # Download the release PHAR and its checksum
-wget https://github.com/PiotrSiejczuk/m2-performance-review/raw/v1.0.4/m2-performance.phar
-wget https://github.com/PiotrSiejczuk/m2-performance-review/raw/v1.0.4/m2-performance.phar.sha256
+wget https://github.com/PiotrSiejczuk/m2-performance-review/raw/v1.0.4.1/m2-performance.phar
+wget https://github.com/PiotrSiejczuk/m2-performance-review/raw/v1.0.4.1/m2-performance.phar.sha256
 
 # Verify integrity
 sha256sum -c m2-performance.phar.sha256

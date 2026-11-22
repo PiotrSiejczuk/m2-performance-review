@@ -352,7 +352,7 @@ class CacheAnalyzer implements AnalyzerInterface
 
         // Check cache warmer only for Varnish setups
         if ($fpcBackend === '2') {
-            $this->checkCacheWarmer();
+            $this->checkCacheWarmer($fpcBackend);
         }
     }
 
