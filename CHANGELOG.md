@@ -5,6 +5,24 @@ All notable changes to the Magento 2 Performance Review Tool will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4.1] - 2026-11-22
+
+Hotfix release for v1.0.4. Upgrade recommended for every store that uses Varnish as Full Page Cache.
+
+### Fixed
+- **Crash on stores with Varnish as Full Page Cache** - `review`, `baseline` and MCP `run_analysis` aborted with
+  `ArgumentCountError: Too few arguments to function CacheAnalyzer::checkCacheWarmer()` whenever
+  `system/full_page_cache/caching_application` resolved to `2` (Varnish). `--continue-on-error` runs reported the
+  analyzer as failed instead. The cache-warmer check now receives the configured backend and runs as intended.
+  - Regression vs the v1.0.3 download: the published v1.0.3 PHAR had been built from older sources than the
+    tagged v1.0.3 code; v1.0.4 was the first PHAR built from the refactored `CacheAnalyzer` that carried the bug.
+- Generated Varnish fix script: VCL backup filename is now quoted (ShellCheck SC2046).
+
+### Technical Improvements
+- Validation matrix extended with a Varnish / Luma (non-Fastly, non-Hyvä) store in Developer and Production mode.
+- Version scheme note: `1.0.4.1` is a four-part hotfix version; `self-update` and the update check compare it
+  correctly (`1.0.4` < `1.0.4.1` < `1.0.5`).
+
 ## [1.0.4] - 2026-11-21
 
 Feature release plus a full validation pass of every command and export in Magento Developer

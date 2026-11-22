@@ -13,5 +13,5 @@ namespace M2Performance;
  */
 class ToolVersion
 {
-    public const VERSION = '1.0.4';
+    public const VERSION = '1.0.4.1';
 }

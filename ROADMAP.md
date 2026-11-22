@@ -1,7 +1,7 @@
 # Magento 2 Performance Review Tool - Roadmap
 
-## Current Status: v1.0.4
-Feature release: MCP server, baselines & regression gates, SARIF export, interactive HTML report,
+## Current Status: v1.0.4.1
+v1.0.4 feature release (v1.0.4.1 hotfix: Varnish full page cache crash): MCP server, baselines & regression gates, SARIF export, interactive HTML report,
 `.m2perf.json` configuration, StaticCodeAnalyzer, Hyvä / Fastly / Valkey / Adobe Commerce Cloud awareness,
 plus a full validation pass of every command in Developer and Production mode.
 
@@ -28,7 +28,8 @@ pass found 20+ defects that only manual end-to-end runs revealed).
   (self-update already prefers release assets and verifies SHA-256)
 - **Unit test suite**: AnalysisRunner, BaselineManager, StoreContext, EnhancedConfigLoader precedence,
   fix-script generators (bash `-n` + shellcheck on generated output)
-- **Fixture Magento roots**: Luma/on-prem, Hyvä + Fastly, Adobe Commerce Cloud (L2 cache), Valkey 2.4.8
+- **Fixture Magento roots**: Luma/on-prem + Varnish, Hyvä + Fastly, Adobe Commerce Cloud (L2 cache), Valkey 2.4.8
+  (the v1.0.4 Varnish crash slipped through because only a Fastly store was in the matrix)
 - **End-to-end smoke matrix**: every command x Developer/Production mode (the 1.0.4 manual matrix, automated)
 - **Cleanup**: retire remaining legacy paths (static HTML generator in `generate`, duplicated update-check logic)
 
@@ -90,6 +91,9 @@ in a REST API / SaaS surface.
 ---
 
 ## Completed Features
+
+### v1.0.4.1
+✅ **Hotfix**: Varnish full page cache crash; release PHAR built from the tagged source
 
 ### v1.0.4
 ✅ **MCP server** for AI coding agents (7 tools over stdio)
